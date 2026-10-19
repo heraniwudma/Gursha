@@ -6,23 +6,9 @@ export interface AuthResponse {
   error?: string;
   user?: any;
   session?: any;
+  needsEmailVerification?: boolean;
+  unverified?: boolean;
 }
-
-// Initial authorized admin phones seed for bootstrap / emergency recovery
-const INITIAL_ADMIN_PHONES = [
-  "+251911778899",
-  "+251922334455",
-  "+251900467999",
-];
-
-// Initial authorized admin emails seed for bootstrap / development
-const INITIAL_ADMIN_EMAILS = [
-  "admin@gurshacafe.et",
-  "management@gurshacafe.et",
-  "admin@gursha.com",
-  "owner@gurshacafe.et",
-  "admin@example.com",
-];
 
 /**
  * Validates and normalizes email input
@@ -43,329 +29,676 @@ export function validateEmail(rawEmail: string): { valid: boolean; normalized: s
 }
 
 /**
- * Fetch authorized administrator email addresses from Supabase `__admin_roles__`
- * or environment variables / initial seed.
+ * Validates password strength
  */
-export async function getAuthorizedAdminEmails(): Promise<string[]> {
-  const envAdmins = (import.meta.env.VITE_ADMIN_EMAILS || "")
-    .split(",")
-    .map((e: string) => e.trim().toLowerCase())
-    .filter(Boolean);
+export function validatePassword(password: string): { valid: boolean; error?: string } {
+  if (!password || typeof password !== "string") {
+    return { valid: false, error: "Please enter a password." };
+  }
+  if (password.length < 6) {
+    return { valid: false, error: "Password must be at least 6 characters long." };
+  }
+  return { valid: true };
+}
 
-  const adminSet = new Set<string>([...INITIAL_ADMIN_EMAILS, ...envAdmins]);
-
+/**
+ * Check if the currently authenticated Supabase session belongs to an authorized admin.
+ * Exclusively enforced by database-backed authorization:
+ * 1. Postgres security-definer function `public.is_admin()`
+ * 2. Database table `public.admin_users`
+ * 3. Authenticated JWT app_metadata role claim
+ */
+export async function verifyCurrentUserIsAdmin(userOrUserId?: any): Promise<boolean> {
   try {
-    const { data } = await supabase
-      .from("customer_sessions")
-      .select("name")
-      .eq("phone", "__admin_roles__")
-      .maybeSingle();
+    let targetUid: string | null = null;
+    let currentUser: any = null;
 
-    if (data?.name) {
-      try {
-        const parsed = JSON.parse(data.name);
-        if (Array.isArray(parsed.adminEmails)) {
-          parsed.adminEmails.forEach((e: string) => {
-            const clean = e.trim().toLowerCase();
-            if (clean) adminSet.add(clean);
-          });
-        }
-      } catch (e) {
-        console.warn("Could not parse __admin_roles__ payload for emails:", e);
-      }
+    if (typeof userOrUserId === "string") {
+      targetUid = userOrUserId;
+    } else if (userOrUserId?.id) {
+      targetUid = userOrUserId.id;
+      currentUser = userOrUserId;
+    } else {
+      const { data: { session } } = await supabase.auth.getSession();
+      targetUid = session?.user?.id || null;
+      currentUser = session?.user || null;
     }
-  } catch (err) {
-    console.warn("Could not query __admin_roles__ from database:", err);
-  }
 
-  return Array.from(adminSet);
-}
+    if (!targetUid) return false;
 
-/**
- * Fetch authorized administrator phone numbers from Supabase `__admin_roles__`
- * or environment variables / initial seed.
- */
-export async function getAuthorizedAdminPhones(): Promise<string[]> {
-  const envAdmins = (import.meta.env.VITE_ADMIN_PHONE_NUMBERS || "")
-    .split(",")
-    .map((p: string) => normalizePhoneNumber(p.trim()))
-    .filter(Boolean);
-
-  const adminSet = new Set<string>([...INITIAL_ADMIN_PHONES, ...envAdmins]);
-
-  try {
-    const { data } = await supabase
-      .from("customer_sessions")
-      .select("name")
-      .eq("phone", "__admin_roles__")
-      .maybeSingle();
-
-    if (data?.name) {
-      try {
-        const parsed = JSON.parse(data.name);
-        if (Array.isArray(parsed.adminPhones)) {
-          parsed.adminPhones.forEach((p: string) => {
-            const norm = normalizePhoneNumber(p);
-            if (norm) adminSet.add(norm);
-          });
-        }
-      } catch (e) {
-        console.warn("Could not parse __admin_roles__ payload:", e);
-      }
+    // 1. Check custom claim / app_metadata
+    if (currentUser?.app_metadata?.role === "admin") {
+      return true;
     }
+
+    // 2. Query Postgres database function (security definer `is_admin()`)
+    try {
+      const { data: isDbAdmin, error: rpcErr } = await (supabase.rpc as any)("is_admin");
+      if (!rpcErr && typeof isDbAdmin === "boolean" && isDbAdmin) {
+        return true;
+      }
+    } catch {
+      // RPC error
+    }
+
+    // 3. Query public.admin_users table in database (scoped by RLS to own row or admin)
+    try {
+      const { data: adminRow, error: adminErr } = await supabase
+        .from("admin_users")
+        .select("user_id")
+        .eq("user_id", targetUid)
+        .maybeSingle();
+
+      if (!adminErr && adminRow?.user_id) {
+        return true;
+      }
+    } catch {
+      // table check failed
+    }
+
+    return false;
   } catch (err) {
-    console.warn("Could not query __admin_roles__ from database:", err);
+    console.warn("[Auth] verifyCurrentUserIsAdmin check failed:", err);
+    return false;
   }
-
-  return Array.from(adminSet);
 }
 
 /**
- * Verify if a phone number or email address has the authorized administrator role.
- */
-export async function checkIsAdmin(identifier: string): Promise<boolean> {
-  if (!identifier) return false;
-  if (identifier.includes("@")) {
-    const cleanEmail = identifier.trim().toLowerCase();
-    const authorized = await getAuthorizedAdminEmails();
-    return authorized.includes(cleanEmail);
-  }
-  const normalized = normalizePhoneNumber(identifier);
-  if (!normalized) return false;
-  const authorized = await getAuthorizedAdminPhones();
-  return authorized.includes(normalized);
-}
-
-/**
- * Specifically verify if an email address has the authorized administrator role.
+ * Verify if an email address is registered as an authorized administrator in the database.
+ * Uses secure database RPC for pre-auth verification and session checks when authenticated.
  */
 export async function checkIsAdminEmail(email: string): Promise<boolean> {
   const { valid, normalized } = validateEmail(email);
   if (!valid) return false;
-  const authorized = await getAuthorizedAdminEmails();
-  return authorized.includes(normalized);
+
+  // 1. Try secure database function check_is_admin_email (SECURITY DEFINER for pre-auth verification)
+  try {
+    const { data, error } = await supabase.rpc("check_is_admin_email", {
+      p_email: normalized,
+    });
+    if (!error && typeof data === "boolean") {
+      return data;
+    }
+  } catch {}
+
+  // 2. If user already has an active session matching this email, verify via user ID
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user && session.user.email?.toLowerCase() === normalized) {
+      return await verifyCurrentUserIsAdmin(session.user);
+    }
+  } catch {}
+
+  return false;
 }
 
 /**
- * Send a real Email OTP verification code via Supabase Auth
+ * Verify if an identifier (email or phone) is an authorized administrator.
+ * Only verified credentials backed by the database are permitted.
  */
-export async function sendEmailOtp(rawEmail: string): Promise<AuthResponse> {
-  const { valid, normalized, error: valError } = validateEmail(rawEmail);
-  if (!valid) {
-    return { success: false, error: valError };
+export async function checkIsAdmin(identifier: string): Promise<boolean> {
+  if (!identifier) return false;
+  if (identifier.includes("@")) {
+    return checkIsAdminEmail(identifier);
+  }
+  // For phone numbers, verify against current authenticated session if available
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      return await verifyCurrentUserIsAdmin(session.user);
+    }
+  } catch {}
+  return false;
+}
+
+/* ==============================================================================
+   CUSTOMER AUTHENTICATION: SIGN UP, EMAIL VERIFICATION, SIGN IN & PASSWORD RESET
+   ============================================================================== */
+
+export const GENERIC_EMAIL_ERROR = "Something went wrong. Please try again later.";
+
+/**
+ * Detect known rate-limit, SMTP, or upstream provider errors without exposing raw internals to user
+ */
+export function isEmailDeliveryOrRateLimitError(error: any): boolean {
+  if (!error) return false;
+  const status = error.status || error.statusCode;
+  const code = (error.code || "").toString().toLowerCase();
+  const msg = (error.message || "").toLowerCase();
+
+  if (status === 429 || status >= 500) return true;
+  if (
+    code === "over_email_send_rate_limit" ||
+    code === "over_request_rate_limit" ||
+    code === "email_provider_disabled" ||
+    code === "smtp_error"
+  ) {
+    return true;
+  }
+  if (
+    msg.includes("rate limit") ||
+    msg.includes("too many requests") ||
+    msg.includes("over_email_send_rate_limit") ||
+    msg.includes("smtp") ||
+    msg.includes("email provider") ||
+    msg.includes("error sending confirmation email") ||
+    msg.includes("error sending") ||
+    msg.includes("brevo") ||
+    msg.includes("mailgun") ||
+    msg.includes("resend") ||
+    msg.includes("gateway")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Register a new customer with Email and Password.
+ * Supports email verification via Supabase and Brevo SMTP.
+ */
+export async function signUpCustomer(
+  rawEmail: string,
+  rawPassword: string,
+  fullName: string,
+  phone?: string
+): Promise<AuthResponse> {
+  const { valid: emailValid, normalized: email, error: emailError } = validateEmail(rawEmail);
+  if (!emailValid) {
+    return { success: false, error: emailError };
   }
 
+  const { valid: pwValid, error: pwError } = validatePassword(rawPassword);
+  if (!pwValid) {
+    return { success: false, error: pwError };
+  }
+
+  const cleanName = (fullName || "").trim() || "Customer";
+  const cleanPhone = phone ? normalizePhoneNumber(phone) : "";
+
   try {
-    const { data, error } = await supabase.auth.signInWithOtp({
-      email: normalized,
+    const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/login` : undefined;
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: rawPassword,
       options: {
-        shouldCreateUser: true,
+        data: {
+          full_name: cleanName,
+          phone: cleanPhone,
+        },
+        emailRedirectTo: redirectUrl,
       },
     });
 
     if (error) {
-      console.error("[Auth] Supabase signInWithOtp (email) error:", error);
+      console.error("[Auth] Customer registration error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
 
-      if (
-        error.status === 429 ||
-        error.message?.toLowerCase().includes("rate limit") ||
-        (error as any).code === "over_email_send_rate_limit"
-      ) {
+      if (error.message?.toLowerCase().includes("user already registered")) {
         return {
           success: false,
-          error: "Rate limit reached. Supabase limits email dispatches. Please wait 60 seconds before requesting another code.",
+          error: "An account with this email address already exists. Please sign in instead.",
         };
       }
 
-      if (
-        error.message?.toLowerCase().includes("email provider") ||
-        (error as any).code === "email_provider_disabled"
-      ) {
+      if (isEmailDeliveryOrRateLimitError(error)) {
         return {
           success: false,
-          error:
-            "Email authentication provider is disabled in your Supabase project. Enable Email provider in Supabase Dashboard → Authentication → Providers → Email.",
+          error: GENERIC_EMAIL_ERROR,
         };
       }
 
       return {
         success: false,
-        error: error.message || "Failed to dispatch verification email. Please try again.",
+        error: GENERIC_EMAIL_ERROR,
       };
     }
 
-    return { success: true, user: data?.user, session: data?.session };
+    // Check if email verification is required (email_confirmed_at is null)
+    const needsEmailVerification = !data?.user?.email_confirmed_at;
+
+    return {
+      success: true,
+      user: data?.user,
+      session: data?.session,
+      needsEmailVerification,
+    };
   } catch (err: any) {
-    console.error("[Auth] Unexpected sendEmailOtp exception:", err);
+    console.error("[Auth] Unexpected signUpCustomer error:", err);
     return {
       success: false,
-      error: err?.message || "Network error while connecting to authentication service.",
+      error: GENERIC_EMAIL_ERROR,
     };
   }
 }
 
 /**
- * Verify an Email OTP code via Supabase Auth
+ * Resend verification email to a customer
  */
-export async function verifyEmailOtp(rawEmail: string, code: string): Promise<AuthResponse> {
-  const { valid, normalized, error: valError } = validateEmail(rawEmail);
+export async function resendVerificationEmail(rawEmail: string): Promise<AuthResponse> {
+  const { valid, normalized, error: emailError } = validateEmail(rawEmail);
   if (!valid) {
-    return { success: false, error: valError };
-  }
-
-  const cleanCode = (code || "").trim();
-  if (!cleanCode || cleanCode.length < 6) {
-    return { success: false, error: "Please enter the 6-digit verification code." };
+    return { success: false, error: emailError };
   }
 
   try {
-    const { data, error } = await supabase.auth.verifyOtp({
+    const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/login` : undefined;
+    const { error } = await supabase.auth.resend({
+      type: "signup",
       email: normalized,
-      token: cleanCode,
-      type: "email",
+      options: {
+        emailRedirectTo: redirectUrl,
+      },
     });
 
     if (error) {
-      console.error("[Auth] Supabase verifyOtp (email) error:", error);
-      if (
-        error.message?.toLowerCase().includes("expired") ||
-        error.message?.toLowerCase().includes("invalid") ||
-        error.message?.toLowerCase().includes("token") ||
-        error.status === 400
-      ) {
-        return {
-          success: false,
-          error: "Invalid or expired verification code. Please check your email or request a fresh code.",
-        };
-      }
+      console.error("[Auth] Resend verification error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
+
       return {
         success: false,
-        error: error.message || "Verification failed. Please try again.",
+        error: GENERIC_EMAIL_ERROR,
       };
     }
 
-    if (!data?.session && !data?.user) {
-      return {
-        success: false,
-        error: "Verification succeeded but session could not be established. Please try again.",
-      };
-    }
-
-    return { success: true, user: data.user, session: data.session };
+    return { success: true };
   } catch (err: any) {
-    console.error("[Auth] Unexpected verifyEmailOtp exception:", err);
+    console.error("[Auth] Unexpected resendVerification error:", err);
     return {
       success: false,
-      error: err?.message || "Network error while verifying OTP.",
+      error: GENERIC_EMAIL_ERROR,
     };
   }
 }
 
 /**
- * Send a real SMS OTP via Supabase Auth
+ * Sign in registered customer using Email and Password
  */
-export async function sendPhoneOtp(rawPhone: string): Promise<AuthResponse> {
-  const { valid, normalized, error: valError } = validatePhoneNumber(rawPhone);
-  if (!valid) {
-    return { success: false, error: valError };
+export async function signInCustomer(rawEmail: string, rawPassword: string): Promise<AuthResponse> {
+  const { valid: emailValid, normalized: email, error: emailError } = validateEmail(rawEmail);
+  if (!emailValid) {
+    return { success: false, error: emailError };
+  }
+
+  if (!rawPassword) {
+    return { success: false, error: "Please enter your password." };
   }
 
   try {
-    const { data, error } = await supabase.auth.signInWithOtp({
-      phone: normalized,
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: rawPassword,
     });
 
     if (error) {
-      console.error("[Auth] Supabase signInWithOtp error:", error);
+      console.error("[Auth] Customer sign in error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
 
-      // Cleanly identify provider configuration issues
       if (
-        error.code === "phone_provider_disabled" ||
-        error.message?.toLowerCase().includes("unsupported phone provider") ||
-        error.message?.toLowerCase().includes("phone provider")
+        error.message?.toLowerCase().includes("email not confirmed") ||
+        error.message?.toLowerCase().includes("email address is not verified") ||
+        (error as any).code === "email_not_confirmed"
       ) {
         return {
           success: false,
-          error:
-            "SMS delivery is not enabled on the authentication provider. Please enable the Phone provider (e.g., Twilio or MessageBird) in the Supabase Dashboard under Authentication → Providers → Phone.",
+          unverified: true,
+          error: "Your email address has not been verified yet. Please check your inbox or click below to resend the verification email.",
         };
       }
 
-      if (error.status === 429 || error.message?.toLowerCase().includes("rate limit")) {
+      if (
+        error.message?.toLowerCase().includes("invalid login credentials") ||
+        error.message?.toLowerCase().includes("invalid credentials")
+      ) {
         return {
           success: false,
-          error: "Rate limit reached. Please wait a few moments before requesting another SMS code.",
+          error: "Incorrect email address or password. Please try again.",
+        };
+      }
+
+      if (isEmailDeliveryOrRateLimitError(error)) {
+        return {
+          success: false,
+          error: GENERIC_EMAIL_ERROR,
         };
       }
 
       return {
         success: false,
-        error: error.message || "Failed to dispatch verification SMS. Please try again.",
+        error: "Unable to sign in. Please verify your email and password.",
       };
     }
 
-    return { success: true, user: data?.user, session: data?.session };
+    // Check if user email is verified
+    if (data?.user && !data.user.email_confirmed_at) {
+      // Prevent unverified sessions from persisting
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        unverified: true,
+        error: "Your email address has not been verified yet. Please check your inbox or click below to resend the verification email.",
+      };
+    }
+
+    return {
+      success: true,
+      user: data?.user,
+      session: data?.session,
+    };
   } catch (err: any) {
-    console.error("[Auth] Unexpected sendPhoneOtp exception:", err);
+    console.error("[Auth] Unexpected signInCustomer error:", err);
     return {
       success: false,
-      error: err?.message || "Network error while connecting to authentication service.",
+      error: "Something went wrong. Please try again later.",
     };
   }
 }
 
 /**
- * Verify a received SMS OTP via Supabase Auth
+ * Send password reset email with 6-digit recovery OTP to customer
  */
-export async function verifyPhoneOtp(rawPhone: string, code: string): Promise<AuthResponse> {
-  const { valid, normalized, error: valError } = validatePhoneNumber(rawPhone);
+export async function requestPasswordReset(rawEmail: string): Promise<AuthResponse> {
+  const { valid, normalized: email, error: emailError } = validateEmail(rawEmail);
   if (!valid) {
-    return { success: false, error: valError };
+    return { success: false, error: emailError };
   }
 
-  const cleanCode = (code || "").trim();
-  if (!cleanCode || cleanCode.length < 4) {
-    return { success: false, error: "Please enter a valid verification code." };
+  try {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+
+    if (error) {
+      console.error("[Auth] Password reset request error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
+
+      return {
+        success: false,
+        error: GENERIC_EMAIL_ERROR,
+      };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("[Auth] Unexpected requestPasswordReset error:", err);
+    return {
+      success: false,
+      error: GENERIC_EMAIL_ERROR,
+    };
+  }
+}
+
+/**
+ * Verify customer recovery OTP using Supabase Auth recovery type
+ */
+export async function verifyPasswordResetOtp(rawEmail: string, rawCode: string): Promise<AuthResponse> {
+  const { valid, normalized: email, error: emailError } = validateEmail(rawEmail);
+  if (!valid) {
+    return { success: false, error: emailError };
+  }
+
+  const cleanCode = rawCode.trim().replace(/\D/g, "");
+  if (!cleanCode || cleanCode.length < 6) {
+    return { success: false, error: "Please enter a valid 6-digit recovery code." };
   }
 
   try {
     const { data, error } = await supabase.auth.verifyOtp({
-      phone: normalized,
+      email,
       token: cleanCode,
-      type: "sms",
+      type: "recovery",
     });
 
     if (error) {
-      console.error("[Auth] Supabase verifyOtp error:", error);
-      if (
-        error.message?.toLowerCase().includes("expired") ||
-        error.message?.toLowerCase().includes("invalid") ||
-        error.status === 400
-      ) {
+      console.error("[Auth] Password reset OTP verification error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
+
+      if (isEmailDeliveryOrRateLimitError(error)) {
         return {
           success: false,
-          error: "Invalid or expired verification code. Please check the code or request a new one.",
+          error: GENERIC_EMAIL_ERROR,
+        };
+      }
+
+      return {
+        success: false,
+        error: "Invalid or expired verification code. Please check your code or request a new one.",
+      };
+    }
+
+    return {
+      success: true,
+      user: data?.user,
+      session: data?.session,
+    };
+  } catch (err: any) {
+    console.error("[Auth] Unexpected verifyPasswordResetOtp error:", err);
+    return {
+      success: false,
+      error: GENERIC_EMAIL_ERROR,
+    };
+  }
+}
+
+/**
+ * Update authenticated user's password (used in password reset flow)
+ */
+export async function updateUserPassword(newPassword: string): Promise<AuthResponse> {
+  const { valid, error: pwError } = validatePassword(newPassword);
+  if (!valid) {
+    return { success: false, error: pwError };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (error) {
+      console.error("[Auth] Update password error:", {
+        status: error.status,
+        code: (error as any).code,
+        message: error.message,
+      });
+
+      if (isEmailDeliveryOrRateLimitError(error)) {
+        return {
+          success: false,
+          error: GENERIC_EMAIL_ERROR,
+        };
+      }
+
+      return {
+        success: false,
+        error: "Unable to update password. Your recovery session may have expired. Please request a new code.",
+      };
+    }
+
+    return {
+      success: true,
+      user: data?.user,
+    };
+  } catch (err: any) {
+    console.error("[Auth] Unexpected updateUserPassword error:", err);
+    return {
+      success: false,
+      error: "Something went wrong. Please try again later.",
+    };
+  }
+}
+
+/* ==============================================================================
+   ADMIN AUTHENTICATION: SECURE EMAIL & PASSWORD SIGN-IN
+   ============================================================================== */
+
+/**
+ * Sign in administrator using Email and Password with strict server-side authorization check.
+ * If credentials are valid but user is NOT an authorized administrator, session is destroyed
+ * immediately and access is strictly denied.
+ */
+export async function signInAdmin(rawEmail: string, rawPassword: string): Promise<AuthResponse> {
+  const { valid: emailValid, normalized: email, error: emailError } = validateEmail(rawEmail);
+  if (!emailValid) {
+    return { success: false, error: emailError };
+  }
+
+  if (!rawPassword) {
+    return { success: false, error: "Please enter your administrator password." };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: rawPassword,
+    });
+
+    if (error) {
+      console.warn("[Auth] Admin signInWithPassword failed:", error.message);
+      if (error.message?.toLowerCase().includes("invalid login credentials")) {
+        return {
+          success: false,
+          error: "Invalid administrator credentials. Access is restricted to authorized personnel.",
         };
       }
       return {
         success: false,
-        error: error.message || "Verification failed. Please try again.",
+        error: error.message || "Failed to authenticate administrator.",
       };
     }
 
-    if (!data?.session && !data?.user) {
+    if (!data?.user) {
       return {
         success: false,
-        error: "Verification succeeded but session could not be established. Please try again.",
+        error: "Authentication failed. No user profile returned.",
       };
     }
 
-    return { success: true, user: data.user, session: data.session };
+    // STRICT ROLE CHECK: Verify that the authenticated user is an authorized admin
+    const isAdmin = await verifyCurrentUserIsAdmin(data.user);
+    if (!isAdmin) {
+      // Immediately sign out to prevent unauthorized session persistence
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        error: "Access Denied: This account is not registered as an authorized administrator for Gursha Cafe.",
+      };
+    }
+
+    return {
+      success: true,
+      user: data.user,
+      session: data.session,
+    };
   } catch (err: any) {
-    console.error("[Auth] Unexpected verifyPhoneOtp exception:", err);
+    console.error("[Auth] Unexpected signInAdmin exception:", err);
     return {
       success: false,
-      error: err?.message || "Network error while verifying OTP.",
+      error: err?.message || "Network error while verifying administrator credentials.",
+    };
+  }
+}
+
+/**
+ * Changes administrator password securely:
+ * 1. Checks active authenticated session
+ * 2. Checks database administrator authorization (verifyCurrentUserIsAdmin)
+ * 3. Validates required fields, password length, confirmation match, and non-identical new password
+ * 4. Re-authenticates the current user using existing email and entered current password
+ * 5. Updates user password via supabase.auth.updateUser
+ * 6. Preserves admin privileges and active session without logging credentials
+ */
+export async function changeAdminPassword(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string
+): Promise<AuthResponse> {
+  if (!currentPassword) {
+    return { success: false, error: "Please enter your current password." };
+  }
+
+  const { valid: pwValid, error: pwError } = validatePassword(newPassword);
+  if (!pwValid) {
+    return { success: false, error: pwError };
+  }
+
+  if (newPassword !== confirmPassword) {
+    return { success: false, error: "New password and confirmation do not match." };
+  }
+
+  if (newPassword === currentPassword) {
+    return { success: false, error: "New password must be different from your current password." };
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    const email = user?.email;
+
+    if (!user || !email) {
+      return {
+        success: false,
+        error: "Authentication required. Please sign in as an administrator first.",
+      };
+    }
+
+    const isAdmin = await verifyCurrentUserIsAdmin(user);
+    if (!isAdmin) {
+      return {
+        success: false,
+        error: "Access denied: This account is not authorized as an administrator.",
+      };
+    }
+
+    // Re-authenticate current administrator with current password
+    const { error: reauthError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+
+    if (reauthError) {
+      console.warn("[Auth] Admin re-authentication failed for password change:", reauthError.message);
+      return {
+        success: false,
+        error: "Current password is incorrect. Please verify and try again.",
+      };
+    }
+
+    // Apply new password to the authenticated user
+    const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+      password: newPassword,
+    });
+
+    if (updateError) {
+      console.error("[Auth] Admin updateUser password failed:", updateError.message);
+      return {
+        success: false,
+        error: "Unable to update password. Please try again later.",
+      };
+    }
+
+    return {
+      success: true,
+      user: updateData?.user,
+    };
+  } catch (err: any) {
+    console.error("[Auth] Unexpected changeAdminPassword exception:", err);
+    return {
+      success: false,
+      error: "An unexpected error occurred while changing your password.",
     };
   }
 }
@@ -378,5 +711,97 @@ export async function signOutAuth(): Promise<void> {
     await supabase.auth.signOut();
   } catch (err) {
     console.warn("[Auth] signOut error:", err);
+  }
+}
+
+/* ==============================================================================
+   BACKWARD-COMPATIBLE OTP METHODS (for existing phone / email OTP flows)
+   ============================================================================== */
+
+export async function sendEmailOtp(rawEmail: string): Promise<AuthResponse> {
+  const { valid, normalized, error: valError } = validateEmail(rawEmail);
+  if (!valid) return { success: false, error: valError };
+
+  try {
+    const { data, error } = await supabase.auth.signInWithOtp({
+      email: normalized,
+      options: { shouldCreateUser: true },
+    });
+    if (error) {
+      if (error.status === 429 || error.message?.toLowerCase().includes("rate limit")) {
+        return { success: false, error: "Rate limit reached. Please wait 60 seconds before requesting another code." };
+      }
+      return { success: false, error: error.message || "Failed to dispatch verification email." };
+    }
+    return { success: true, user: data?.user, session: data?.session };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Network error." };
+  }
+}
+
+export async function verifyEmailOtp(rawEmail: string, code: string): Promise<AuthResponse> {
+  const { valid, normalized, error: valError } = validateEmail(rawEmail);
+  if (!valid) return { success: false, error: valError };
+  const cleanCode = (code || "").trim();
+  if (!cleanCode || cleanCode.length < 6) {
+    return { success: false, error: "Please enter the 6-digit verification code." };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: normalized,
+      token: cleanCode,
+      type: "email",
+    });
+    if (error) {
+      return { success: false, error: "Invalid or expired verification code." };
+    }
+    return { success: true, user: data?.user, session: data?.session };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Network error." };
+  }
+}
+
+export async function sendPhoneOtp(rawPhone: string): Promise<AuthResponse> {
+  const { valid, normalized, error: valError } = validatePhoneNumber(rawPhone);
+  if (!valid) return { success: false, error: valError };
+
+  try {
+    const { data, error } = await supabase.auth.signInWithOtp({ phone: normalized });
+    if (error) {
+      if (error.code === "phone_provider_disabled" || error.message?.toLowerCase().includes("phone provider")) {
+        return {
+          success: false,
+          error: "SMS delivery is not configured on the authentication provider. Please use email sign-in or guest checkout.",
+        };
+      }
+      return { success: false, error: error.message || "Failed to dispatch verification SMS." };
+    }
+    return { success: true, user: data?.user, session: data?.session };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Network error." };
+  }
+}
+
+export async function verifyPhoneOtp(rawPhone: string, code: string): Promise<AuthResponse> {
+  const { valid, normalized, error: valError } = validatePhoneNumber(rawPhone);
+  if (!valid) return { success: false, error: valError };
+  const cleanCode = (code || "").trim();
+  if (!cleanCode || cleanCode.length < 4) {
+    return { success: false, error: "Please enter a valid verification code." };
+  }
+
+  try {
+    const { data, error } = await supabase.auth.verifyOtp({
+      phone: normalized,
+      token: cleanCode,
+      type: "sms",
+    });
+    if (error) {
+      return { success: false, error: "Invalid or expired verification code." };
+    }
+    return { success: true, user: data?.user, session: data?.session };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Network error." };
   }
 }

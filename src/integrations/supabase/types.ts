@@ -32,6 +32,8 @@ export interface Database {
           status: string
           eta: number
           staff_note: string
+          user_id: string | null
+          guest_lookup_token: string | null
         }
         Insert: {
           id?: string
@@ -55,6 +57,8 @@ export interface Database {
           status?: string
           eta?: number
           staff_note?: string
+          user_id?: string | null
+          guest_lookup_token?: string | null
         }
         Update: {
           id?: string
@@ -78,6 +82,8 @@ export interface Database {
           status?: string
           eta?: number
           staff_note?: string
+          user_id?: string | null
+          guest_lookup_token?: string | null
         }
         Relationships: []
       }
@@ -137,6 +143,51 @@ export interface Database {
           }
         ]
       }
+      profiles: {
+        Row: {
+          id: string
+          email: string | null
+          full_name: string | null
+          phone: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          email?: string | null
+          full_name?: string | null
+          phone?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          email?: string | null
+          full_name?: string | null
+          phone?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      admin_users: {
+        Row: {
+          user_id: string
+          email: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          email: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          email?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       customer_sessions: {
         Row: {
           phone: string
@@ -164,12 +215,167 @@ export interface Database {
         }
         Relationships: []
       }
+      store_settings: {
+        Row: {
+          key: string
+          value: Json
+          updated_at: string
+        }
+        Insert: {
+          key: string
+          value: Json
+          updated_at?: string
+        }
+        Update: {
+          key?: string
+          value?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      menu_items: {
+        Row: {
+          id: string
+          name: string
+          name_am: string | null
+          name_sid: string | null
+          description: string | null
+          price: number
+          category: string
+          image: string | null
+          spice: number
+          rating: number
+          popular: boolean
+          fasting: boolean
+          in_stock: boolean
+          created_at: string
+        }
+        Insert: {
+          id: string
+          name: string
+          name_am?: string | null
+          name_sid?: string | null
+          description?: string | null
+          price: number
+          category: string
+          image?: string | null
+          spice?: number
+          rating?: number
+          popular?: boolean
+          fasting?: boolean
+          in_stock?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          name_am?: string | null
+          name_sid?: string | null
+          description?: string | null
+          price?: number
+          category?: string
+          image?: string | null
+          spice?: number
+          rating?: number
+          popular?: boolean
+          fasting?: boolean
+          in_stock?: boolean
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      check_is_admin_email: {
+        Args: {
+          p_email: string
+        }
+        Returns: boolean
+      }
+      get_guest_order: {
+        Args: {
+          p_code: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      get_guest_orders: {
+        Args: {
+          p_orders: Json
+        }
+        Returns: Json
+      }
+      submit_guest_payment_proof: {
+        Args: {
+          p_code: string
+          p_token: string
+          p_image: string
+          p_note: string
+        }
+        Returns: boolean
+      }
+      submit_payment_proof: {
+        Args: {
+          p_code: string
+          p_token: string
+          p_image: string
+          p_note: string
+        }
+        Returns: boolean
+      }
+      create_order: {
+        Args: {
+          p_order: Json
+          p_items: Json
+        }
+        Returns: Json
+      }
+      get_authorized_order_updates: {
+        Args: {
+          p_orders: Json
+        }
+        Returns: Json
+      }
+      admin_update_order_status: {
+        Args: {
+          p_code: string
+          p_status: string
+          p_staff_note?: string
+        }
+        Returns: boolean
+      }
+      admin_approve_payment_proof: {
+        Args: {
+          p_code: string
+          p_staff_note?: string
+        }
+        Returns: boolean
+      }
+      admin_reject_payment_proof: {
+        Args: {
+          p_code: string
+          p_staff_note?: string
+        }
+        Returns: boolean
+      }
+      claim_guest_order: {
+        Args: {
+          p_code: string
+          p_token: string
+        }
+        Returns: boolean
+      }
+      claim_verified_phone_orders: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

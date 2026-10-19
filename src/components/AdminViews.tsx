@@ -4,17 +4,20 @@ import { motion } from "framer-motion";
 import { toast } from "sonner";
 import {
   ArrowCounterClockwise, Bank, Bicycle, CalendarCheck, Check, CheckCircle, Clock,
-  EnvelopeSimple, Eye, FileText, FloppyDisk, ForkKnife, Gauge, Lock, MagnifyingGlass, MapPin,
+  EnvelopeSimple, Eye, EyeSlash, FileText, FloppyDisk, ForkKnife, Gauge, Lock, MagnifyingGlass, MapPin,
   NotePencil, PencilSimple, Phone, Plus, Printer, Receipt, ShieldCheck, SignOut,
-  Star, Storefront, Trash, UploadSimple, UserCircle, WarningCircle, X, XCircle,
+  Sparkle, Star, Storefront, Trash, UploadSimple, UserCircle, WarningCircle, X, XCircle,
 } from "@phosphor-icons/react";
 import { useGursha } from "../context/GurshaStore";
 import { Price } from "./CustomerViews";
 import { DEFAULT_DELIVERY_SETTINGS, STATUS_ORDER, zoneFee } from "../data/mockData";
+import { getNextOrderStatus, getOrderFlow, isValidStatusTransition } from "../lib/orders";
 import type { DeliveryDestination, DeliverySettings, Order, OrderStatus, PaymentMethod, ServiceType } from "../types";
 
 import { normalizePhoneNumber, validatePhoneNumber, formatPhoneDisplay } from "../lib/phone";
 import { validateEmail } from "../lib/auth";
+import { ProofImagePreview } from "./ProofImagePreview";
+import { resolveProofImageUrl } from "../lib/storage";
 
 const etb = (n: number) => `ETB ${n.toLocaleString()}`;
 const fmt = (ts: number) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -27,112 +30,43 @@ const NAV = [
   { to: "/admin/orders", label: "Orders", Icon: Receipt, end: false },
   { to: "/admin/payments", label: "Payments", Icon: ShieldCheck, end: false },
   { to: "/admin/menu", label: "Menu", Icon: ForkKnife, end: false },
+  { to: "/admin/extras", label: "Extras", Icon: Sparkle, end: false },
   { to: "/admin/cms", label: "Content", Icon: FileText, end: false },
   { to: "/admin/profile", label: "Profile", Icon: UserCircle, end: false },
 ];
 
 function AdminLogin() {
-  const { t, requestAdminOtp, verifyAdminOtp, requestAdminEmailOtp, verifyAdminEmailOtp } = useGursha();
-  const [method, setMethod] = useState<"email" | "phone">("email");
-  const [email, setEmail] = useState("admin@gurshacafe.et");
-  const [phone, setPhone] = useState("+251911778899");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"input" | "verify">("input");
-  const [isSending, setIsSending] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const { signInAdmin } = useGursha();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (cooldown > 0) {
-      const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [cooldown]);
-
-  const handleSendCode = async () => {
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setErrorMessage(null);
-    if (method === "email") {
-      const { valid, normalized, error: valErr } = validateEmail(email);
-      if (!valid) {
-        setErrorMessage(valErr || "Please enter a valid administrator email address.");
-        return;
-      }
 
-      setIsSending(true);
-      try {
-        const res = await requestAdminEmailOtp(normalized);
-        if (res.success) {
-          setStep("verify");
-          setCooldown(60);
-        } else {
-          setErrorMessage(res.error || "Failed to dispatch administrator verification email.");
-        }
-      } finally {
-        setIsSending(false);
-      }
-    } else {
-      const { valid, normalized, error: valErr } = validatePhoneNumber(phone);
-      if (!valid) {
-        setErrorMessage(valErr || "Please enter a valid administrator phone number.");
-        return;
-      }
-
-      setIsSending(true);
-      try {
-        const res = await requestAdminOtp(normalized);
-        if (res.success) {
-          setStep("verify");
-          setCooldown(60);
-        } else {
-          setErrorMessage(res.error || "Failed to dispatch administrator verification code.");
-        }
-      } finally {
-        setIsSending(false);
-      }
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    const cleanCode = code.trim();
-    if (!cleanCode) {
-      setErrorMessage(`Please enter the verification code received via ${method === "email" ? "email" : "SMS"}.`);
-      return;
-    }
-    if (cleanCode.length < 6) {
-      setErrorMessage("The verification code must be at least 6 characters.");
+    const { valid, normalized, error: emailErr } = validateEmail(email);
+    if (!valid) {
+      setErrorMessage(emailErr || "Please enter a valid administrator email address.");
       return;
     }
 
-    setErrorMessage(null);
-    setIsVerifying(true);
+    if (!password) {
+      setErrorMessage("Please enter your administrator password.");
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      if (method === "email") {
-        const { normalized } = validateEmail(email);
-        const res = await verifyAdminEmailOtp(normalized, cleanCode);
-        if (!res.success) {
-          setErrorMessage(res.error || "Verification failed. Check the code or contact management.");
-        }
-      } else {
-        const res = await verifyAdminOtp(cleanCode, phone);
-        if (!res.success) {
-          setErrorMessage(res.error || "Verification failed. Check the code or contact management.");
-        }
+      const res = await signInAdmin(normalized, password);
+      if (!res.success) {
+        setErrorMessage(res.error || "Invalid administrator credentials or unauthorized account.");
       }
     } finally {
-      setIsVerifying(false);
+      setIsSubmitting(false);
     }
-  };
-
-  const handleResend = () => {
-    if (cooldown > 0 || isSending) return;
-    handleSendCode();
-  };
-
-  const handleChangeIdentifier = () => {
-    setStep("input");
-    setCode("");
-    setErrorMessage(null);
   };
 
   return (
@@ -141,46 +75,10 @@ function AdminLogin() {
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-orange-600 text-white shadow-md shadow-orange-600/20">
           <Lock size={24} weight="bold" />
         </span>
-        <h1 className="font-display mt-5 text-2xl font-extrabold text-stone-900 dark:text-white">Staff sign in</h1>
+        <h1 className="font-display mt-5 text-2xl font-extrabold text-stone-900 dark:text-white">Admin Dashboard</h1>
         <p className="mt-1.5 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">
-          Authorized management only. Verify your identity with an email or phone one-time password (OTP).
+          Restricted access. Authorized Gursha Cafe administrators only.
         </p>
-
-        {/* Method Toggle */}
-        {step === "input" && (
-          <div className="mt-5 grid grid-cols-2 rounded-2xl bg-stone-100 p-1 dark:bg-white/5">
-            <button
-              type="button"
-              onClick={() => {
-                setMethod("email");
-                setErrorMessage(null);
-              }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
-                method === "email"
-                  ? "bg-white text-stone-900 shadow-sm dark:bg-zinc-800 dark:text-white"
-                  : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"
-              }`}
-            >
-              <EnvelopeSimple size={15} weight="bold" />
-              <span>Email OTP</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMethod("phone");
-                setErrorMessage(null);
-              }}
-              className={`flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition ${
-                method === "phone"
-                  ? "bg-white text-stone-900 shadow-sm dark:bg-zinc-800 dark:text-white"
-                  : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"
-              }`}
-            >
-              <Phone size={15} weight="bold" />
-              <span>SMS OTP</span>
-            </button>
-          </div>
-        )}
 
         {errorMessage && (
           <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-red-500/20 bg-red-500/10 p-3.5 text-xs text-red-600 dark:text-red-400">
@@ -189,132 +87,69 @@ function AdminLogin() {
           </div>
         )}
 
-        {step === "input" ? (
-          <div className="mt-5 space-y-4">
-            {method === "email" ? (
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                  Registered Administrator Email
-                </label>
-                <input
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@gurshacafe.et"
-                  type="email"
-                  className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                />
-                <span className="mt-1 block text-[11px] text-stone-400">
-                  A 6-digit verification code will be sent to your authorized email address.
-                </span>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                  Registered Administrator Phone
-                </label>
-                <input
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0911 778 899 or +251 911 778 899"
-                  inputMode="tel"
-                  className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                />
-                <span className="mt-1 block text-[11px] text-stone-400">
-                  A one-time verification SMS will be dispatched to your authorized number.
-                </span>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleSendCode}
-              disabled={isSending || (method === "email" ? email.trim().length < 5 : phone.trim().length < 8)}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-zinc-200"
-            >
-              {isSending ? (
-                <>
-                  <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                  <span>{method === "email" ? "Sending email code..." : "Dispatching SMS..."}</span>
-                </>
-              ) : (
-                <span>Send verification code</span>
-              )}
-            </button>
+        <form onSubmit={handlePasswordLogin} className="mt-5 space-y-4">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
+              Administrator Email
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@gurshacafe.et"
+              autoComplete="email"
+              className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
+            />
           </div>
-        ) : (
-          <div className="mt-5 space-y-4">
+
+          <div>
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-stone-500 dark:text-zinc-400">
-                  Code sent to{" "}
-                  <span className="font-bold text-stone-800 dark:text-zinc-200">
-                    {method === "email" ? email : formatPhoneDisplay(phone)}
-                  </span>
-                </p>
-              </div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                Password
+              </label>
+            </div>
+            <div className="relative mt-1">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••••••"
+                autoComplete="current-password"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
+              />
               <button
                 type="button"
-                onClick={handleChangeIdentifier}
-                className="text-xs font-bold text-orange-600 hover:underline"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
               >
-                Change {method === "email" ? "email" : "number"}
+                {showPassword ? <EyeSlash size={18} weight="bold" /> : <Eye size={18} weight="bold" />}
               </button>
             </div>
-
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                Security Code (6-Digit OTP)
-              </label>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                maxLength={6}
-                inputMode="numeric"
-                placeholder="123456"
-                autoFocus
-                className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-xl font-mono font-extrabold tracking-[0.3em] outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleVerifyCode}
-              disabled={isVerifying || code.trim().length < 6}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:bg-orange-500 disabled:opacity-50"
-            >
-              {isVerifying ? (
-                <>
-                  <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                  <span>Verifying authorization...</span>
-                </>
-              ) : (
-                <span>Verify & Unlock Dashboard</span>
-              )}
-            </button>
-
-            <div className="flex items-center justify-between text-xs text-stone-500 dark:text-zinc-400 pt-1">
-              <span>Didn't receive {method === "email" ? "email" : "SMS"}?</span>
-              {cooldown > 0 ? (
-                <span className="font-semibold text-stone-400">
-                  Resend in <span className="tabular-nums font-bold text-orange-600">{cooldown}s</span>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResend}
-                  disabled={isSending}
-                  className="font-bold text-orange-600 hover:underline"
-                >
-                  Resend code
-                </button>
-              )}
-            </div>
           </div>
-        )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting || !email || !password}
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:bg-orange-500 disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <>
+                <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
+                <span>Verifying credentials...</span>
+              </>
+            ) : (
+              <span>Sign in to Admin Dashboard</span>
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
 }
+
 
 export function AdminShell() {
   const { t, adminAuthed, adminLogout, orders } = useGursha();
@@ -594,6 +429,22 @@ function StatusChip({ status }: { status: OrderStatus }) {
 
 /* -------------------------------------------------------------------- Lightbox Modal */
 export function ImageLightboxModal({ src, alt, onClose }: { src: string; alt?: string; onClose: () => void }) {
+  const [resolvedSrc, setResolvedSrc] = useState(src);
+
+  useEffect(() => {
+    let active = true;
+    if (src.startsWith("payment-proofs/")) {
+      resolveProofImageUrl(src).then((url) => {
+        if (active && url) setResolvedSrc(url);
+      });
+    } else {
+      setResolvedSrc(src);
+    }
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -617,7 +468,7 @@ export function ImageLightboxModal({ src, alt, onClose }: { src: string; alt?: s
           </button>
         </div>
         <img
-          src={src}
+          src={resolvedSrc}
           alt={alt || "Full size view"}
           className="max-h-[80vh] max-w-full rounded-xl object-contain"
         />
@@ -631,8 +482,8 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
   const { t, advance, setStatus, approveProof, rejectProof } = useGursha();
   const [reason, setReason] = useState("");
   const [showFullProof, setShowFullProof] = useState(false);
-  const idx = STATUS_ORDER.indexOf(order.status);
-  const next = idx >= 0 && idx < STATUS_ORDER.length - 1 ? STATUS_ORDER[idx + 1] : null;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const next = getNextOrderStatus(order);
   const isPaymentVerified = order.payment === "cash" || order.proofStatus === "approved";
 
   return (
@@ -661,7 +512,7 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
             <li key={c.uid} className="flex items-start justify-between gap-4 py-3 text-sm">
               <span className="text-stone-700 dark:text-zinc-200">
                 <span className="font-bold tabular-nums">{c.qty}×</span> {c.name}
-                <span className="block text-xs text-stone-400">{c.base} · {c.spice === 0 ? "no spice" : `spice ${c.spice}/3`}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
+                <span className="block text-xs text-stone-400">{c.base}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
                 {c.note && <span className="block text-xs italic text-stone-400">“{c.note}”</span>}
               </span>
               <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
@@ -689,7 +540,7 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
               onClick={() => setShowFullProof(true)}
               className="group relative cursor-pointer overflow-hidden rounded-xl border border-stone-200 dark:border-white/10"
             >
-              <img src={order.proofImage} alt={`Payment proof for ${order.code}`} className="max-h-52 w-full object-contain transition group-hover:scale-102" />
+              <ProofImagePreview src={order.proofImage} alt={`Payment proof for ${order.code}`} className="max-h-52 w-full object-contain transition group-hover:scale-102" />
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
                 <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-stone-900 shadow">Click to inspect</span>
               </div>
@@ -721,17 +572,33 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => rejectProof(order.code, reason || "Payment screenshot unclear")}
-                      className="rounded-full border border-red-500/40 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-500/10"
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true);
+                        try {
+                          await rejectProof(order.code, reason || "Payment screenshot unclear");
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      className="rounded-full border border-red-500/40 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                     >
-                      Reject proof
+                      Reject payment
                     </button>
                     <button
                       type="button"
-                      onClick={() => approveProof(order.code)}
-                      className="rounded-full bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow hover:bg-emerald-500"
+                      disabled={isSubmitting}
+                      onClick={async () => {
+                        setIsSubmitting(true);
+                        try {
+                          await approveProof(order.code);
+                        } finally {
+                          setIsSubmitting(false);
+                        }
+                      }}
+                      className="rounded-full bg-emerald-600 px-3 py-2 text-xs font-bold text-white shadow hover:bg-emerald-500 disabled:opacity-50"
                     >
-                      Approve & Accept
+                      Approve payment
                     </button>
                   </div>
                 </div>
@@ -755,17 +622,44 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
             {next && order.status !== "cancelled" && isPaymentVerified && (
               <button
                 type="button"
-                onClick={() => advance(order.code)}
-                className="col-span-2 rounded-full bg-orange-600 px-4 py-3 text-sm font-bold text-white hover:bg-orange-500"
+                disabled={isSubmitting}
+                onClick={async () => {
+                  setIsSubmitting(true);
+                  try {
+                    await advance(order.code);
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}
+                className="col-span-2 rounded-full bg-orange-600 px-4 py-3 text-sm font-bold text-white hover:bg-orange-500 disabled:opacity-50 shadow-sm"
               >
-                Advance → {t(`status.${next}`)}
+                {next === "accepted"
+                  ? "Accept order"
+                  : next === "preparing"
+                  ? "Start preparing"
+                  : next === "ready"
+                  ? "Mark ready"
+                  : next === "dispatched"
+                  ? "Out for delivery"
+                  : next === "completed"
+                  ? "Complete order"
+                  : `Advance → ${t(`status.${next}`)}`}
               </button>
             )}
             {order.status !== "cancelled" && order.status !== "completed" && (
               <button
                 type="button"
-                onClick={() => { setStatus(order.code, "cancelled"); onClose(); }}
-                className="col-span-2 rounded-full border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-600 hover:bg-stone-100 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/5"
+                disabled={isSubmitting}
+                onClick={async () => {
+                  setIsSubmitting(true);
+                  try {
+                    await setStatus(order.code, "cancelled");
+                    onClose();
+                  } finally {
+                    setIsSubmitting(false);
+                  }
+                }}
+                className="col-span-2 rounded-full border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-600 hover:bg-stone-100 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/5 disabled:opacity-50"
               >
                 Cancel order
               </button>
@@ -1324,11 +1218,13 @@ export function AdminOrders() {
                           onClick={() => advance(o.code)}
                           className="flex flex-1 items-center justify-center gap-1 rounded-full bg-orange-600 px-3 py-2 text-xs font-bold text-white hover:bg-orange-500"
                         >
-                          <Check size={13} weight="bold" /> Advance
+                          <Check size={13} weight="bold" /> {o.status === "placed" || o.status === "payment_pending" ? "Accept order" : "Advance"}
                         </button>
                       )
                     ) : (
-                      <button type="button" onClick={() => setStatus(o.code, "preparing")} className="flex-1 rounded-full border border-stone-300 px-3 py-2 text-xs font-bold text-stone-500 dark:border-white/15 dark:text-zinc-400">Reopen</button>
+                      <span className="flex-1 text-center py-2 text-xs font-bold text-stone-400 uppercase tracking-wider">
+                        {o.status === "completed" ? "Completed" : "Cancelled"}
+                      </span>
                     )}
                   </div>
                 </article>
@@ -1345,10 +1241,11 @@ export function AdminOrders() {
 
 /* ------------------------------------------------------------------ payments */
 export function AdminPayments() {
-  const { orders, approveProof, rejectProof } = useGursha();
+  const { orders, approveProof, rejectProof, setStatus } = useGursha();
   const [reason, setReason] = useState<Record<string, string>>({});
   const [filterTab, setFilterTab] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null);
+  const [busyCodes, setBusyCodes] = useState<Record<string, boolean>>({});
 
   const electronicOrders = orders.filter((o) => o.payment !== "cash");
   const pendingList = electronicOrders.filter((o) => o.proofStatus === "pending");
@@ -1536,7 +1433,7 @@ export function AdminPayments() {
                     onClick={() => setLightbox({ src: o.proofImage!, alt: `Payment proof for ${o.code}` })}
                     className="group relative cursor-pointer overflow-hidden rounded-xl border border-stone-200 bg-stone-100 dark:border-white/10 dark:bg-zinc-800"
                   >
-                    <img
+                    <ProofImagePreview
                       src={o.proofImage}
                       alt={`Proof for ${o.code}`}
                       className="max-h-56 w-full object-contain transition duration-200 group-hover:scale-102"
@@ -1597,37 +1494,109 @@ export function AdminPayments() {
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => rejectProof(o.code, reason[o.code] || "Payment screenshot unclear")}
-                        className="rounded-full border border-red-500/40 px-4 py-2.5 text-xs font-bold text-red-600 transition hover:bg-red-500/10"
+                        disabled={busyCodes[o.code]}
+                        onClick={async () => {
+                          setBusyCodes((b) => ({ ...b, [o.code]: true }));
+                          try {
+                            await rejectProof(o.code, reason[o.code] || "Payment screenshot unclear");
+                          } finally {
+                            setBusyCodes((b) => ({ ...b, [o.code]: false }));
+                          }
+                        }}
+                        className="rounded-full border border-red-500/40 px-4 py-2.5 text-xs font-bold text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
                       >
-                        Reject proof
+                        Reject payment
                       </button>
                       <button
                         type="button"
-                        disabled={!o.proofImage}
-                        onClick={() => approveProof(o.code)}
+                        disabled={!o.proofImage || busyCodes[o.code]}
+                        onClick={async () => {
+                          setBusyCodes((b) => ({ ...b, [o.code]: true }));
+                          try {
+                            await approveProof(o.code);
+                          } finally {
+                            setBusyCodes((b) => ({ ...b, [o.code]: false }));
+                          }
+                        }}
                         className="flex items-center justify-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                        title={!o.proofImage ? "Cannot approve without an uploaded receipt" : "Approve proof and accept order"}
+                        title={!o.proofImage ? "Cannot approve without an uploaded receipt" : "Approve customer payment proof"}
                       >
-                        <Check size={14} weight="bold" /> Approve & Accept
+                        <Check size={14} weight="bold" /> Approve payment
+                      </button>
+                    </div>
+                  </div>
+                ) : o.proofStatus === "approved" && (o.status === "placed" || o.status === "payment_pending") ? (
+                  <div className="space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                        <CheckCircle size={15} weight="bold" /> Payment approved · Ready for kitchen
+                      </span>
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-extrabold uppercase text-emerald-700 dark:text-emerald-200">
+                        {o.status}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={busyCodes[o.code]}
+                        onClick={async () => {
+                          setBusyCodes((b) => ({ ...b, [o.code]: true }));
+                          try {
+                            await setStatus(o.code, "accepted");
+                          } finally {
+                            setBusyCodes((b) => ({ ...b, [o.code]: false }));
+                          }
+                        }}
+                        className="flex items-center justify-center gap-1.5 rounded-full bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-orange-500 disabled:opacity-50"
+                      >
+                        <Check size={14} weight="bold" /> Accept order
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyCodes[o.code]}
+                        onClick={async () => {
+                          setBusyCodes((b) => ({ ...b, [o.code]: true }));
+                          try {
+                            await setStatus(o.code, "cancelled");
+                          } finally {
+                            setBusyCodes((b) => ({ ...b, [o.code]: false }));
+                          }
+                        }}
+                        className="rounded-full border border-stone-300 px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-100 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/5 disabled:opacity-50"
+                      >
+                        Cancel order
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between border-t border-stone-200 pt-3 text-xs dark:border-white/10">
-                    <span className="font-semibold text-stone-500 dark:text-zinc-400">
-                      Order Status: <span className="font-bold text-stone-800 dark:text-zinc-200">{o.status}</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        // Allow reopening verification if needed
-                        setReason((r) => ({ ...r, [o.code]: "" }));
-                      }}
-                      className="text-xs font-bold text-orange-600 hover:underline"
-                    >
-                      {o.proofStatus === "approved" ? "Payment verified" : "Awaiting customer correction"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-stone-500 dark:text-zinc-400">
+                        Status: <strong className="text-stone-800 dark:text-zinc-200 capitalize">{o.status === "dispatched" ? "Out for delivery" : o.status}</strong>
+                      </span>
+                      {o.proofStatus === "approved" && (
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <Check size={12} weight="bold" /> Paid
+                        </span>
+                      )}
+                    </div>
+                    {o.status !== "cancelled" && o.status !== "completed" && (
+                      <button
+                        type="button"
+                        disabled={busyCodes[o.code]}
+                        onClick={async () => {
+                          setBusyCodes((b) => ({ ...b, [o.code]: true }));
+                          try {
+                            await setStatus(o.code, "cancelled");
+                          } finally {
+                            setBusyCodes((b) => ({ ...b, [o.code]: false }));
+                          }
+                        }}
+                        className="text-xs font-bold text-red-600 hover:underline disabled:opacity-50"
+                      >
+                        Cancel order
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1651,11 +1620,22 @@ export function AdminPayments() {
 
 /* ----------------------------------------------------------------- admin profile */
 export function AdminProfile() {
-  const { cms, saveCms, refreshCms, session, adminAuthed } = useGursha();
+  const { cms, saveCms, refreshCms, session, adminAuthed, changeAdminPassword } = useGursha();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(new Date());
+
+  // Password change state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     address: cms.address || "",
@@ -1813,6 +1793,59 @@ export function AdminProfile() {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+
+    if (!adminAuthed) {
+      setPasswordError("Unauthorized: You must be signed in as an administrator to change password.");
+      return;
+    }
+
+    if (!currentPassword) {
+      setPasswordError("Please enter your current administrator password.");
+      return;
+    }
+
+    if (!newPassword) {
+      setPasswordError("Please enter a new password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters long.");
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      setPasswordError("New password must be different from your current password.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+
+    setIsSubmittingPassword(true);
+    try {
+      const res = await changeAdminPassword(currentPassword, newPassword, confirmPassword);
+      if (!res.success) {
+        setPasswordError(res.error || "Failed to update password. Please check your current password.");
+        return;
+      }
+      setPasswordSuccess("Your administrator password has been changed successfully.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      setPasswordError(err?.message || "An unexpected error occurred while updating your password.");
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* 1. Header Toolbar */}
@@ -1872,7 +1905,145 @@ export function AdminProfile() {
         </div>
       </section>
 
-      {/* 3. Café Location & Operating Hours Section */}
+      {/* 3. Change Password Section */}
+      <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-zinc-900">
+        <div className="border-b border-stone-100 pb-4 dark:border-white/5">
+          <h2 className="font-display text-base font-extrabold text-stone-900 dark:text-white flex items-center gap-2">
+            <Lock size={20} weight="bold" className="text-orange-600" /> Change Password
+          </h2>
+          <p className="mt-0.5 text-xs text-stone-500 dark:text-zinc-400">
+            Verify your current administrator password to update your credentials securely. Passwords are never logged or stored locally.
+          </p>
+        </div>
+
+        {passwordError && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-xs font-semibold text-red-700 dark:text-red-300">
+            <XCircle size={16} weight="bold" className="mt-0.5 shrink-0" />
+            <span>{passwordError}</span>
+          </div>
+        )}
+
+        {passwordSuccess && (
+          <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+            <CheckCircle size={16} weight="bold" className="mt-0.5 shrink-0" />
+            <span>{passwordSuccess}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleChangePassword} className="mt-5 space-y-4 max-w-xl">
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
+              Current Password *
+            </label>
+            <div className="relative mt-1">
+              <input
+                type={showCurrentPassword ? "text" : "password"}
+                required
+                value={currentPassword}
+                onChange={(e) => {
+                  setCurrentPassword(e.target.value);
+                  setPasswordError(null);
+                }}
+                placeholder="Enter current administrator password"
+                autoComplete="current-password"
+                className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+              />
+              <button
+                type="button"
+                aria-label={showCurrentPassword ? "Hide password" : "Show password"}
+                onClick={() => setShowCurrentPassword((v) => !v)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
+              >
+                {showCurrentPassword ? <EyeSlash size={17} weight="bold" /> : <Eye size={17} weight="bold" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
+                New Password *
+              </label>
+              <div className="relative mt-1">
+                <input
+                  type={showNewPassword ? "text" : "password"}
+                  required
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="At least 6 characters"
+                  autoComplete="new-password"
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+                />
+                <button
+                  type="button"
+                  aria-label={showNewPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowNewPassword((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
+                >
+                  {showNewPassword ? <EyeSlash size={17} weight="bold" /> : <Eye size={17} weight="bold" />}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
+                Confirm New Password *
+              </label>
+              <div className="relative mt-1">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 pr-10 text-sm outline-none transition focus:border-orange-500 focus:ring-1 focus:ring-orange-500 dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+                />
+                <button
+                  type="button"
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
+                >
+                  {showConfirmPassword ? <EyeSlash size={17} weight="bold" /> : <Eye size={17} weight="bold" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-stone-400 dark:text-zinc-500">
+            Password must be at least 6 characters and different from your current password.
+          </p>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isSubmittingPassword || !currentPassword || !newPassword || !confirmPassword}
+              className="flex items-center gap-2 rounded-full bg-orange-600 px-6 py-2.5 text-xs font-extrabold text-white shadow-md transition hover:bg-orange-500 disabled:opacity-50"
+            >
+              {isSubmittingPassword ? (
+                <>
+                  <ArrowCounterClockwise size={14} weight="bold" className="animate-spin" />
+                  <span>Updating password...</span>
+                </>
+              ) : (
+                <>
+                  <Lock size={14} weight="bold" />
+                  <span>Update Password</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* 4. Café Location & Operating Hours Section */}
       <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-zinc-900">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-stone-100 pb-4 dark:border-white/5">
           <div>

@@ -9,9 +9,11 @@ import {
 import { useGursha } from "../context/GurshaStore";
 import { Price, SectionHead } from "./CustomerViews";
 import { DELIVERY_ZONES, STATUS_ORDER, zoneFee } from "../data/mockData";
+import { getOrderFlow } from "../lib/orders";
 import type { PaymentMethod, ServiceType } from "../types";
 import { normalizePhoneNumber, validatePhoneNumber, formatPhoneDisplay } from "../lib/phone";
 import { validateEmail } from "../lib/auth";
+import { ProofImagePreview } from "./ProofImagePreview";
 
 const money = (n: number) => `ETB ${n.toLocaleString()}`;
 const fmt = (ts: number) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -73,16 +75,11 @@ const scheduleLabel = (ts: number | null) =>
 
 /* ------------------------------------------------------------------ checkout */
 export function CheckoutPage() {
-  const { t, cart, cartSubtotal, placeOrder, service, setService, session, deliverySettings } = useGursha();
+  const { t, cart, cartSubtotal, placeOrder, session } = useGursha();
   const navigate = useNavigate();
-
-  const enabledDestinations = (deliverySettings.destinations || []).filter((d) => d.enabled);
-  const deliveryAvailable = deliverySettings.enabled && enabledDestinations.length > 0;
 
   const [name, setName] = useState(session?.name ?? "");
   const [phone, setPhone] = useState(session?.phone ?? "");
-  const [selectedDestId, setSelectedDestId] = useState(enabledDestinations[0]?.id ?? "");
-  const [address, setAddress] = useState("");
   const [when, setWhen] = useState<"now" | "later">("now");
   const [scheduledFor, setScheduledFor] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("telebirr");
@@ -91,11 +88,8 @@ export function CheckoutPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
-  const currentDest = enabledDestinations.find((d) => d.id === selectedDestId) ?? enabledDestinations[0];
   const subtotal = cartSubtotal;
-  const deliveryFee = service === "delivery" && deliveryAvailable && currentDest ? zoneFee(currentDest.distanceKm) : 0;
-  const serviceCharge = service === "dine-in" ? Math.round(subtotal * 0.05) : 0;
-  const total = subtotal + deliveryFee + serviceCharge;
+  const total = subtotal;
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
@@ -132,15 +126,6 @@ export function CheckoutPage() {
     const next: string[] = [];
     if (!name.trim()) next.push("Enter the name for this order.");
     if (phone.trim().length < 9) next.push("Enter a valid Ethiopian phone number.");
-    if (service === "delivery") {
-      if (!deliverySettings.enabled) {
-        next.push("Delivery is currently unavailable. Please choose Dine-in or Takeaway.");
-      } else if (!currentDest) {
-        next.push("No delivery destination is currently available. Please select Dine-in or Takeaway.");
-      } else if (!address.trim()) {
-        next.push("Add a delivery address or landmark.");
-      }
-    }
     if (payment !== "cash" && !proofImage) next.push("Attach your payment screenshot so we can verify it.");
     if (cart.length === 0) next.push("Your cart is empty.");
     setErrors(next);
@@ -151,10 +136,6 @@ export function CheckoutPage() {
       const order = await placeOrder({
         customerName: name.trim(),
         phone: phone.trim(),
-        service,
-        zone: service === "delivery" && currentDest ? currentDest.name : "",
-        distanceKm: service === "delivery" && currentDest ? currentDest.distanceKm : 0,
-        address: service === "delivery" ? address.trim() : "",
         scheduledFor: when === "later" ? parseSchedule(scheduledFor) : null,
         payment,
         proofImage,
@@ -185,87 +166,7 @@ export function CheckoutPage() {
           </section>
 
           <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">2 · How you want it</h3>
-            <div className="mb-4 grid grid-cols-3 gap-2">
-              {(["dine-in", "takeaway", "delivery"] as ServiceType[]).map((s) => {
-                const isDeliveryUnavailable = s === "delivery" && !deliveryAvailable;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    disabled={isDeliveryUnavailable}
-                    onClick={() => setService(s)}
-                    className={`rounded-xl px-2 py-2.5 text-xs font-bold transition-colors ${
-                      service === s
-                        ? "bg-orange-600 text-white"
-                        : isDeliveryUnavailable
-                        ? "cursor-not-allowed border border-stone-200 bg-stone-100 text-stone-400 opacity-60 dark:border-white/5 dark:bg-white/5 dark:text-zinc-600"
-                        : "border border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"
-                    }`}
-                  >
-                    {t(s === "dine-in" ? "svc.dineIn" : s === "takeaway" ? "svc.takeaway" : "svc.delivery")}
-                    {isDeliveryUnavailable ? " (Off)" : ""}
-                  </button>
-                );
-              })}
-            </div>
-
-            {service === "dine-in" && (
-              <p className="flex items-center gap-2 rounded-xl bg-stone-100 p-3 text-sm text-stone-600 dark:bg-white/5 dark:text-zinc-300">
-                <Clock size={16} weight="bold" className="text-orange-600" /> Dine in at Gursha — tell your server your order code when you are seated.
-              </p>
-            )}
-
-            {service === "takeaway" && (
-              <p className="flex items-center gap-2 rounded-xl bg-stone-100 p-3 text-sm text-stone-600 dark:bg-white/5 dark:text-zinc-300">
-                <Clock size={16} weight="bold" className="text-orange-600" /> Collect from the Lake Shore Road counter in about 20 minutes.
-              </p>
-            )}
-
-            {service === "delivery" && !deliveryAvailable && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300">
-                <p className="font-bold flex items-center gap-2">
-                  <WarningCircle size={18} weight="bold" /> Delivery is currently unavailable
-                </p>
-                <p className="mt-1 text-xs">
-                  We are not accepting delivery orders at this time. Please select Dine-in or Takeaway above.
-                </p>
-              </div>
-            )}
-
-            {service === "delivery" && deliveryAvailable && (
-              <div className="space-y-3">
-                <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
-                  Select Delivery Destination
-                </label>
-                <select
-                  value={currentDest?.id ?? ""}
-                  onChange={(e) => setSelectedDestId(e.target.value)}
-                  className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm font-semibold outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-950 dark:text-zinc-100"
-                >
-                  {enabledDestinations.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} · {d.distanceKm} km · {money(zoneFee(d.distanceKm))}
-                    </option>
-                  ))}
-                </select>
-                <div className="flex gap-2">
-                  <input
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Specific hall, building, room or landmark"
-                    className="flex-1 rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                  />
-                </div>
-                <p className="flex items-center gap-2 text-xs text-stone-500 dark:text-zinc-400">
-                  <MapPin size={14} weight="bold" /> Rider fee {money(deliveryFee)} to {currentDest?.name} ({currentDest?.distanceKm} km).
-                </p>
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">3 · When</h3>
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">2 · When</h3>
             <div className="flex flex-wrap items-center gap-2">
               {(["now", "later"] as const).map((w) => (
                 <button key={w} type="button" onClick={() => setWhen(w)}
@@ -281,7 +182,23 @@ export function CheckoutPage() {
           </section>
 
           <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">4 · Payment</h3>
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">3 · Payment</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              {(["now", "later"] as const).map((w) => (
+                <button key={w} type="button" onClick={() => setWhen(w)}
+                  className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${when === w ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900" : "border border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
+                  {w === "now" ? "As soon as possible" : "Schedule"}
+                </button>
+              ))}
+              {when === "later" && (
+                <input type="time" value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)}
+                  className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">3 · Payment</h3>
             <div className="grid gap-2 sm:grid-cols-3">
               {(Object.keys(PAY_META) as PaymentMethod[]).map((p) => {
                 const { Icon, title } = PAY_META[p];
@@ -336,8 +253,6 @@ export function CheckoutPage() {
           </ul>
           <dl className="space-y-2 border-t border-stone-200 pt-4 text-sm dark:border-white/10">
             <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Subtotal</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
-            {deliveryFee > 0 && <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Delivery</dt><dd className="tabular-nums">{money(deliveryFee)}</dd></div>}
-            {serviceCharge > 0 && <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Service (5%)</dt><dd className="tabular-nums">{money(serviceCharge)}</dd></div>}
             <div className="flex justify-between border-t border-stone-200 pt-3 text-lg font-extrabold text-stone-900 dark:border-white/10 dark:text-white">
               <dt>{t("checkout.total")}</dt><dd className="tabular-nums text-orange-600">{money(total)}</dd>
             </div>
@@ -375,20 +290,33 @@ export function CheckoutPage() {
 }
 
 /* -------------------------------------------------------------------- orders */
-function StatusBar({ status }: { status: string }) {
+function StatusBar({ status, service }: { status: string; service?: ServiceType }) {
   const { t } = useGursha();
-  const active = STATUS_ORDER.indexOf(status);
+  const flow = getOrderFlow(service || "dine-in");
+
+  if (status === "cancelled") {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl bg-red-500/10 px-4 py-2.5 text-xs font-bold text-red-600 dark:text-red-400">
+        <XCircle size={16} weight="bold" />
+        <span>{t("status.cancelled")}</span>
+      </div>
+    );
+  }
+
+  const activeIndex = flow.indexOf(status === "payment_pending" ? "placed" : (status as any));
+  const active = activeIndex >= 0 ? activeIndex : 0;
+
   return (
     <ol className="gursha-scroll flex items-center gap-2 overflow-x-auto pb-1">
-      {STATUS_ORDER.map((s, i) => {
-        const done = status === "cancelled" ? i === 0 : i <= active;
+      {flow.map((s, i) => {
+        const done = i <= active;
         return (
           <li key={s} className="flex shrink-0 items-center gap-2">
             <span className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${done ? "bg-orange-600 text-white" : "bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-zinc-500"}`}>
               {done && <Check size={11} weight="bold" />}
               {t(`status.${s}`)}
             </span>
-            {i < STATUS_ORDER.length - 1 && <span className={`h-px w-4 ${i < active ? "bg-orange-500" : "bg-stone-200 dark:bg-white/10"}`} />}
+            {i < flow.length - 1 && <span className={`h-px w-4 ${i < active ? "bg-orange-500" : "bg-stone-200 dark:bg-white/10"}`} />}
           </li>
         );
       })}
@@ -397,33 +325,160 @@ function StatusBar({ status }: { status: string }) {
 }
 
 export function OrdersPage() {
-  const { t, orders, session, setCartOpen } = useGursha();
+  const { t, orders, session, setCartOpen, guestOrderCodes, guestTokens, claimGuestOrder } = useGursha();
   const navigate = useNavigate();
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimCode, setClaimCode] = useState("");
+  const [claimToken, setClaimToken] = useState("");
+  const [claimLoading, setClaimLoading] = useState(false);
 
-  // Privacy protection: Customers only see their own orders tied to their phone number
-  const userOrders = session?.phone
-    ? orders.filter((o) => normalizePhoneNumber(o.phone) === normalizePhoneNumber(session.phone))
+  // Privacy protection: Customers see strictly their own authenticated orders or their guest orders
+  const userOrders = orders.filter((o) => {
+    if (session?.id && o.userId === session.id) return true;
+    if (guestOrderCodes.includes(o.code)) return true;
+    return false;
+  });
+
+  const unlinkedGuestOrders = session?.verified
+    ? userOrders.filter((o) => !o.userId && guestOrderCodes.includes(o.code) && guestTokens[o.code])
     : [];
+
+  const handleClaimSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!claimCode.trim() || !claimToken.trim()) return;
+    setClaimLoading(true);
+    try {
+      const res = await claimGuestOrder(claimCode.trim(), claimToken.trim());
+      if (res.success) {
+        setClaimCode("");
+        setClaimToken("");
+        setShowClaimModal(false);
+      }
+    } finally {
+      setClaimLoading(false);
+    }
+  };
+
+  const handleClaimAllUnlinked = async () => {
+    if (unlinkedGuestOrders.length === 0) return;
+    setClaimLoading(true);
+    try {
+      for (const ord of unlinkedGuestOrders) {
+        const token = guestTokens[ord.code];
+        if (token) {
+          await claimGuestOrder(ord.code, token);
+        }
+      }
+    } finally {
+      setClaimLoading(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
       <SectionHead eyebrow="Live tracking" title={t("orders.title")} sub="Track your active orders and meal status in real time."
-        right={<button type="button" onClick={() => setCartOpen(true)} className="rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 dark:border-white/15 dark:text-zinc-200">{t("cart.title")}</button>} />
+        right={
+          <div className="flex items-center gap-2">
+            {session?.verified && (
+              <button
+                type="button"
+                onClick={() => setShowClaimModal(true)}
+                className="rounded-full border border-stone-300 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:border-orange-500 hover:text-orange-600 dark:border-white/15 dark:text-zinc-200"
+              >
+                + Link guest order
+              </button>
+            )}
+            <button type="button" onClick={() => setCartOpen(true)} className="rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 dark:border-white/15 dark:text-zinc-200">{t("cart.title")}</button>
+          </div>
+        }
+      />
+
+      {/* Unlinked browser guest order prompt */}
+      {unlinkedGuestOrders.length > 0 && (
+        <div className="mb-5 rounded-2xl border border-orange-200 bg-orange-50/90 p-4 dark:border-orange-950/40 dark:bg-orange-950/20">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-orange-950 dark:text-orange-200">
+                You have {unlinkedGuestOrders.length} guest order{unlinkedGuestOrders.length > 1 ? "s" : ""} from this browser ({unlinkedGuestOrders.map((o) => o.code).join(", ")})
+              </p>
+              <p className="mt-0.5 text-[11px] text-orange-800/80 dark:text-orange-300/80">
+                Link them to your authenticated account so they stay in your history permanently.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={claimLoading}
+              onClick={handleClaimAllUnlinked}
+              className="inline-flex items-center gap-1.5 rounded-full bg-orange-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-orange-500 disabled:opacity-50"
+            >
+              {claimLoading ? "Linking..." : "Link to My Account"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Claim Modal */}
+      {showClaimModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-stone-950/70 backdrop-blur-sm" onClick={() => setShowClaimModal(false)} />
+          <div className="relative w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-zinc-900">
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3 dark:border-white/10">
+              <h3 className="font-display text-base font-bold text-stone-900 dark:text-white">Link Past Guest Order</h3>
+              <button type="button" onClick={() => setShowClaimModal(false)} className="rounded-full p-1 text-stone-400 hover:text-stone-700 dark:hover:text-white">
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+            <form onSubmit={handleClaimSubmit} className="mt-4 space-y-4">
+              <p className="text-xs text-stone-500 dark:text-zinc-400">
+                Enter your order code and the secret tracking token from your order confirmation to add it to your account.
+              </p>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">Order Code</label>
+                <input
+                  value={claimCode}
+                  onChange={(e) => setClaimCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. GR-A1B2"
+                  required
+                  className="mt-1 w-full rounded-xl border border-stone-300 px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">Secret Tracking Token</label>
+                <input
+                  value={claimToken}
+                  onChange={(e) => setClaimToken(e.target.value)}
+                  placeholder="48-character secret token"
+                  required
+                  className="mt-1 w-full rounded-xl border border-stone-300 px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-800 dark:text-white"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={claimLoading}
+                className="w-full rounded-full bg-orange-600 py-3 text-sm font-bold text-white transition hover:bg-orange-500 disabled:opacity-50"
+              >
+                {claimLoading ? "Verifying..." : "Claim & Link Order"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {userOrders.length === 0 ? (
         <div className="grid place-items-center rounded-3xl border border-dashed border-stone-300 p-8 py-16 text-center dark:border-white/15">
           <Receipt size={36} className="text-stone-300 dark:text-zinc-600" />
           <p className="mt-3 text-base font-bold text-stone-900 dark:text-white">
-            {session?.verified ? "No orders found for your phone number" : "No active orders in this session"}
+            {session?.verified ? "No orders found for your account" : "No active orders in this session"}
           </p>
           <p className="mt-1 max-w-sm text-xs text-stone-500 dark:text-zinc-400">
             {session?.verified
-              ? "Any orders you place with your verified phone number will automatically appear here."
-              : "Sign in with your verified phone number on your Profile page to sync your order history across devices."}
+              ? "Any orders you place while signed in will automatically appear here."
+              : "Guests can order food anytime without creating an account. Sign in to sync your orders across devices."}
           </p>
           <div className="mt-5 flex items-center gap-3">
             {!session?.verified && (
-              <button type="button" onClick={() => navigate("/profile")} className="rounded-full border border-stone-300 px-5 py-2.5 text-xs font-bold text-stone-800 dark:border-white/20 dark:text-zinc-200">
-                Sign in with phone
+              <button type="button" onClick={() => navigate("/login")} className="rounded-full border border-stone-300 px-5 py-2.5 text-xs font-bold text-stone-800 dark:border-white/20 dark:text-zinc-200">
+                Sign in
               </button>
             )}
             <button type="button" onClick={() => navigate("/menu")} className="rounded-full bg-orange-600 px-5 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-orange-500">
@@ -446,7 +501,7 @@ export function OrdersPage() {
                   <Price n={o.total} className="block text-lg font-extrabold text-orange-600" />
                 </div>
               </div>
-              <div className="mt-4"><StatusBar status={o.status} /></div>
+              <div className="mt-4"><StatusBar status={o.status} service={o.service} /></div>
             </motion.button>
           ))}
         </div>
@@ -456,10 +511,33 @@ export function OrdersPage() {
 }
 
 export function OrderDetailPage() {
-  const { t, orders, setStatus, submitProof } = useGursha();
+  const { t, orders, setStatus, submitProof, fetchOrderDetails } = useGursha();
   const { code = "" } = useParams();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(!orders.some((o) => o.code === code));
   const order = orders.find((o) => o.code === code);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!order && code) {
+      setLoading(true);
+      fetchOrderDetails(code, true).finally(() => {
+        if (mounted) setLoading(false);
+      });
+    }
+
+    if (!code || order?.status === "completed" || order?.status === "cancelled") return;
+
+    // Periodically fetch fresh order details to reflect real-time status updates saved in Supabase
+    const timer = setInterval(() => {
+      fetchOrderDetails(code, true);
+    }, 4000);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [code, order?.status, fetchOrderDetails]);
 
   const [newImage, setNewImage] = useState("");
   const [newNote, setNewNote] = useState("");
@@ -468,6 +546,15 @@ export function OrderDetailPage() {
   const [proofSuccess, setProofSuccess] = useState(false);
   const [showReplaceForm, setShowReplaceForm] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  if (loading && !order) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-20 text-center">
+        <ArrowCounterClockwise size={32} className="mx-auto animate-spin text-orange-600" />
+        <p className="mt-3 text-sm font-semibold text-stone-500">Retrieving order details...</p>
+      </div>
+    );
+  }
 
   if (!order) {
     return (
@@ -543,7 +630,7 @@ export function OrderDetailPage() {
           </div>
         </div>
 
-        <div className="no-print py-5"><StatusBar status={order.status} /></div>
+        <div className="no-print py-5"><StatusBar status={order.status} service={order.service} /></div>
 
         {/* Payment Verification Status Banners */}
         {order.payment !== "cash" && (
@@ -606,7 +693,7 @@ export function OrderDetailPage() {
             <li key={c.uid} className="flex items-start justify-between gap-4 py-3 text-sm">
               <span className="text-stone-700 dark:text-zinc-200">
                 <span className="font-bold tabular-nums">{c.qty}×</span> {c.name}
-                <span className="block text-xs text-stone-400">{c.base} · {c.spice === 0 ? "no spice" : `spice ${c.spice}/3`}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
+                <span className="block text-xs text-stone-400">{c.base}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
               </span>
               <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
             </li>
@@ -654,7 +741,7 @@ export function OrderDetailPage() {
               onClick={() => setLightboxImage(order.proofImage!)}
               className="group relative inline-block cursor-pointer overflow-hidden rounded-xl border border-stone-200 bg-white dark:border-white/10 dark:bg-zinc-900"
             >
-              <img src={order.proofImage} alt="Payment proof" className="h-44 object-contain transition group-hover:scale-102" />
+              <ProofImagePreview src={order.proofImage} alt="Payment proof" className="h-44 object-contain transition group-hover:scale-102" />
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition group-hover:opacity-100">
                 <span className="rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-stone-900 shadow">
                   Click to enlarge
@@ -804,7 +891,7 @@ export function OrderDetailPage() {
                 <X size={16} weight="bold" />
               </button>
             </div>
-            <img src={lightboxImage} alt="Payment proof full preview" className="max-h-[75vh] w-full object-contain" />
+            <ProofImagePreview src={lightboxImage} alt="Payment proof full preview" className="max-h-[75vh] w-full object-contain" />
           </div>
         </div>
       )}
@@ -816,21 +903,19 @@ export function OrderDetailPage() {
 export function ProfilePage() {
   const {
     t, session, orders, logout, cms, refreshCms, adminAuthed,
-    requestEmailOtp, verifyEmailOtp, linkCustomerPhone,
-    requestOtp, verifyOtp,
+    updateCustomerProfile, claimGuestOrder,
   } = useGursha();
-  const [method, setMethod] = useState<"email" | "phone">("email");
-  const [email, setEmail] = useState(session?.email ?? "");
-  const [name, setName] = useState(session?.name ?? "");
-  const [phone, setPhone] = useState(session?.phone ?? "");
-  const [otp, setOtp] = useState("");
-  const [step, setStep] = useState<"input" | "verify">("input");
-  const [isSending, setIsSending] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [linkPhoneInput, setLinkPhoneInput] = useState("");
-  const [isLinking, setIsLinking] = useState(false);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(session?.name ?? "");
+  const [editPhone, setEditPhone] = useState(session?.phone ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Guest order linking
+  const [claimCode, setClaimCode] = useState("");
+  const [claimToken, setClaimToken] = useState("");
+  const [isClaiming, setIsClaiming] = useState(false);
 
   // Fetch the latest saved cafe location and hours from database on mount
   useEffect(() => {
@@ -839,128 +924,46 @@ export function ProfilePage() {
 
   // Sync state when session changes
   useEffect(() => {
-    if (session?.name) setName(session.name);
-    if (session?.email) setEmail(session.email);
-    if (session?.phone) setPhone(session.phone);
-    if (session?.verified) {
-      setStep("input");
-      setOtp("");
-      setErrorMessage(null);
-    }
+    if (session?.name) setEditName(session.name);
+    if (session?.phone) setEditPhone(session.phone);
   }, [session]);
 
-  // Resend cooldown timer
-  useEffect(() => {
-    if (cooldown > 0) {
-      const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [cooldown]);
-
-  const handleRequestOtp = async () => {
-    if (method === "email") {
-      const { valid, normalized, error: valErr } = validateEmail(email);
-      if (!valid) {
-        setErrorMessage(valErr || "Please enter a valid email address.");
-        return;
-      }
-
-      setErrorMessage(null);
-      setIsSending(true);
-      try {
-        const res = await requestEmailOtp(normalized, name);
-        if (res.success) {
-          setStep("verify");
-          setCooldown(60);
-        } else {
-          setErrorMessage(res.error || "Failed to dispatch verification email.");
-        }
-      } finally {
-        setIsSending(false);
-      }
-    } else {
-      const { valid, normalized, error: valErr } = validatePhoneNumber(phone);
-      if (!valid) {
-        setErrorMessage(valErr || "Please enter a valid phone number.");
-        return;
-      }
-
-      setErrorMessage(null);
-      setIsSending(true);
-      try {
-        const res = await requestOtp(normalized, name);
-        if (res.success) {
-          setStep("verify");
-          setCooldown(60);
-        } else {
-          setErrorMessage(res.error || "Failed to dispatch verification code.");
-        }
-      } finally {
-        setIsSending(false);
-      }
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    const cleanOtp = otp.trim();
-    if (!cleanOtp) {
-      setErrorMessage("Please enter the 6-digit verification code.");
-      return;
-    }
-
-    setErrorMessage(null);
-    setIsVerifying(true);
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaveError(null);
+    setIsSaving(true);
     try {
-      if (method === "email") {
-        const res = await verifyEmailOtp(email, cleanOtp);
-        if (res.success) {
-          setStep("input");
-          setOtp("");
-        } else {
-          setErrorMessage(res.error || "Invalid or expired code. Please try again.");
-        }
+      const res = await updateCustomerProfile(editName, editPhone);
+      if (!res.success) {
+        setSaveError(res.error || "Failed to update profile.");
       } else {
-        const res = await verifyOtp(cleanOtp, phone);
-        if (res.success) {
-          setStep("input");
-          setOtp("");
-        } else {
-          setErrorMessage(res.error || "Invalid or expired code. Please try again.");
-        }
+        setIsEditing(false);
       }
     } finally {
-      setIsVerifying(false);
+      setIsSaving(false);
     }
   };
 
-  const handleResend = () => {
-    if (cooldown > 0 || isSending) return;
-    handleRequestOtp();
-  };
-
-  const handleChangeTarget = () => {
-    setStep("input");
-    setOtp("");
-    setErrorMessage(null);
-  };
-
-  const handleLinkPhone = async () => {
-    if (!linkPhoneInput.trim()) return;
-    setIsLinking(true);
+  const handleClaimOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!claimCode.trim() || !claimToken.trim()) return;
+    setIsClaiming(true);
     try {
-      const res = await linkCustomerPhone(linkPhoneInput.trim());
+      const res = await claimGuestOrder(claimCode.trim(), claimToken.trim());
       if (res.success) {
-        setLinkPhoneInput("");
+        setClaimCode("");
+        setClaimToken("");
       }
     } finally {
-      setIsLinking(false);
+      setIsClaiming(false);
     }
   };
 
-  // Privacy protection: Only show orders placed under the customer's verified phone number
-  const userOrders = session?.phone
-    ? orders.filter((o) => normalizePhoneNumber(o.phone) === normalizePhoneNumber(session.phone))
-    : [];
+  // Privacy protection: Show orders placed by this customer account or verified phone
+  const userOrders = orders.filter((o) =>
+    (session?.id && o.userId === session.id) ||
+    (session?.phone && normalizePhoneNumber(o.phone) === normalizePhoneNumber(session.phone))
+  );
 
   const spent = userOrders.reduce((a, o) => a + (o.status === "cancelled" ? 0 : o.total), 0);
   const loyalty = Math.min(userOrders.length, 10);
@@ -970,68 +973,144 @@ export function ProfilePage() {
       <SectionHead
         eyebrow={t("nav.home")}
         title={t("profile.title")}
-        sub="Sign in with Email OTP verification to securely manage your account and orders."
+        sub="Manage your personal account, delivery contact details, and past orders."
       />
       <div className="grid gap-5 md:grid-cols-2">
         <section className="rounded-3xl border border-stone-200 bg-white p-6 dark:border-white/10 dark:bg-zinc-900">
           {session?.verified ? (
             <>
-              <div className="flex items-center gap-3">
-                <span className="grid h-12 w-12 place-items-center rounded-2xl bg-orange-600 text-white">
-                  <UserCircle size={26} weight="bold" />
-                </span>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="font-display text-lg font-extrabold text-stone-900 dark:text-white">
-                      {session.name}
-                    </p>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400">
-                      <Check size={11} weight="bold" /> Verified
-                    </span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-orange-600 text-white">
+                    <UserCircle size={26} weight="bold" />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-display text-lg font-extrabold text-stone-900 dark:text-white">
+                        {session.name}
+                      </p>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700 dark:text-emerald-400">
+                        <Check size={11} weight="bold" /> Verified
+                      </span>
+                    </div>
+                    {session.email && (
+                      <p className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-zinc-300">
+                        <EnvelopeSimple size={13} weight="bold" className="text-orange-600" />
+                        {session.email}
+                      </p>
+                    )}
+                    {session.phone && (
+                      <p className="flex items-center gap-1.5 text-xs text-stone-500 dark:text-zinc-400">
+                        <Phone size={13} weight="bold" className="text-stone-400" />
+                        {formatPhoneDisplay(session.phone)}
+                      </p>
+                    )}
                   </div>
-                  {session.email && (
-                    <p className="flex items-center gap-1.5 text-xs font-semibold text-stone-600 dark:text-zinc-300">
-                      <EnvelopeSimple size={13} weight="bold" className="text-orange-600" />
-                      {session.email}
-                    </p>
-                  )}
-                  {session.phone && (
-                    <p className="flex items-center gap-1.5 text-xs text-stone-500 dark:text-zinc-400">
-                      <Phone size={13} weight="bold" className="text-stone-400" />
-                      {formatPhoneDisplay(session.phone)}
-                    </p>
-                  )}
                 </div>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditName(session.name);
+                      setEditPhone(session.phone || "");
+                      setSaveError(null);
+                      setIsEditing(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl border border-stone-200 px-3 py-1.5 text-xs font-bold text-stone-700 transition hover:bg-stone-50 dark:border-white/10 dark:text-zinc-200 dark:hover:bg-white/5"
+                  >
+                    <PencilSimple size={13} weight="bold" />
+                    <span>Edit Profile</span>
+                  </button>
+                )}
               </div>
 
-              {/* Secure Phone Linking for Order History */}
-              {!session.phone && (
-                <div className="mt-4 rounded-2xl border border-dashed border-stone-200 bg-stone-50 p-4 dark:border-white/10 dark:bg-zinc-800/40">
-                  <p className="text-xs font-bold text-stone-800 dark:text-zinc-200 flex items-center gap-1.5">
-                    <Phone size={14} weight="bold" className="text-orange-600" /> Link Contact Phone for Orders
-                  </p>
-                  <p className="mt-1 text-[11px] text-stone-500 dark:text-zinc-400 leading-relaxed">
-                    Link your Ethiopian phone number to associate and review past orders placed via delivery or online.
-                  </p>
-                  <div className="mt-2.5 flex gap-2">
-                    <input
-                      value={linkPhoneInput}
-                      onChange={(e) => setLinkPhoneInput(e.target.value)}
-                      placeholder="0911 234 567"
-                      inputMode="tel"
-                      className="flex-1 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-xs outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
-                    />
+              {/* Profile Edit Form */}
+              {isEditing ? (
+                <form onSubmit={handleSaveProfile} className="mt-5 rounded-2xl border border-stone-200 bg-stone-50 p-4 dark:border-white/10 dark:bg-zinc-800/40">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
+                    Update Contact Details
+                  </h4>
+                  {saveError && (
+                    <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-red-500/10 p-2.5 text-xs text-red-600 dark:text-red-400">
+                      <WarningCircle size={15} weight="bold" className="mt-0.5 shrink-0" />
+                      <span>{saveError}</span>
+                    </div>
+                  )}
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-stone-400">Full Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="Abebe Kebede"
+                        className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2 text-xs outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-stone-400">
+                        Contact Phone (for delivery orders)
+                      </label>
+                      <input
+                        type="tel"
+                        value={editPhone}
+                        onChange={(e) => setEditPhone(e.target.value)}
+                        placeholder="0911 234 567"
+                        className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2 text-xs outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3.5 flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      onClick={handleLinkPhone}
-                      disabled={isLinking || linkPhoneInput.trim().length < 8}
-                      className="rounded-xl bg-orange-600 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-orange-500 disabled:opacity-50"
+                      onClick={() => setIsEditing(false)}
+                      disabled={isSaving}
+                      className="rounded-xl border border-stone-200 px-3 py-1.5 text-xs font-bold text-stone-600 transition hover:bg-white dark:border-white/10 dark:text-zinc-300"
                     >
-                      {isLinking ? "Linking..." : "Link Phone"}
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving || !editName.trim()}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-orange-500 disabled:opacity-50"
+                    >
+                      {isSaving ? "Saving..." : "Save Profile"}
                     </button>
                   </div>
-                </div>
-              )}
+                </form>
+              ) : null}
+
+              {/* Guest Order Linking for Order History */}
+              <div className="mt-5 rounded-2xl border border-dashed border-stone-200 bg-stone-50/70 p-4 dark:border-white/10 dark:bg-zinc-800/25">
+                <p className="text-xs font-bold text-stone-800 dark:text-zinc-200 flex items-center gap-1.5">
+                  <Receipt size={14} weight="bold" className="text-orange-600" /> Link Order Placed as Guest
+                </p>
+                <p className="mt-1 text-[11px] text-stone-500 dark:text-zinc-400 leading-relaxed">
+                  Enter the order code and 32-character tracking token from your guest receipt to link it to your account.
+                </p>
+                <form onSubmit={handleClaimOrder} className="mt-2.5 flex flex-wrap gap-2">
+                  <input
+                    value={claimCode}
+                    onChange={(e) => setClaimCode(e.target.value)}
+                    placeholder="GUR-XXXXXX"
+                    className="w-28 rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-xs font-mono font-bold uppercase outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
+                  />
+                  <input
+                    value={claimToken}
+                    onChange={(e) => setClaimToken(e.target.value)}
+                    placeholder="Tracking token"
+                    className="flex-1 min-w-[140px] rounded-xl border border-stone-300 bg-white px-3 py-1.5 text-xs font-mono outline-none focus:border-orange-500 dark:border-white/15 dark:bg-zinc-900 dark:text-zinc-100"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isClaiming || !claimCode.trim() || !claimToken.trim()}
+                    className="rounded-xl bg-stone-900 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900"
+                  >
+                    {isClaiming ? "Linking..." : "Link Order"}
+                  </button>
+                </form>
+              </div>
 
               <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-xl bg-stone-100 p-3 dark:bg-white/5">
@@ -1069,199 +1148,42 @@ export function ProfilePage() {
                 {t("profile.logout")}
               </button>
             </>
-          ) : step === "input" ? (
-            <>
-              <div className="flex items-center justify-between">
-                <h3 className="font-display text-base font-extrabold text-stone-900 dark:text-white">
-                  {t("profile.login")}
-                </h3>
-                {/* Method switcher */}
-                <div className="flex rounded-full bg-stone-100 p-0.5 dark:bg-zinc-800 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => { setMethod("email"); setErrorMessage(null); }}
-                    className={`flex items-center gap-1 rounded-full px-3 py-1 font-bold transition ${
-                      method === "email"
-                        ? "bg-white text-orange-600 shadow-sm dark:bg-zinc-900 dark:text-orange-400"
-                        : "text-stone-500 hover:text-stone-800 dark:text-zinc-400"
-                    }`}
-                  >
-                    <EnvelopeSimple size={13} weight="bold" /> Email OTP
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setMethod("phone"); setErrorMessage(null); }}
-                    className={`flex items-center gap-1 rounded-full px-3 py-1 font-bold transition ${
-                      method === "phone"
-                        ? "bg-white text-orange-600 shadow-sm dark:bg-zinc-900 dark:text-orange-400"
-                        : "text-stone-500 hover:text-stone-800 dark:text-zinc-400"
-                    }`}
-                  >
-                    <Phone size={13} weight="bold" /> SMS
-                  </button>
-                </div>
-              </div>
-
-              <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-                {method === "email"
-                  ? "Enter your email address to receive a 6-digit verification code."
-                  : "Enter your phone number to receive a one-time verification SMS."}
+          ) : (
+            <div className="py-2 text-center sm:py-6">
+              <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-orange-100 text-orange-600 dark:bg-orange-500/20 dark:text-orange-400">
+                <UserCircle size={32} weight="bold" />
+              </span>
+              <h3 className="font-display mt-4 text-xl font-extrabold text-stone-900 dark:text-white">
+                Customer Account
+              </h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">
+                Sign in with your email and password to view order history, save contact details for delivery, and earn loyalty perks.
               </p>
 
-              {errorMessage && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl bg-red-500/10 p-3 text-xs text-red-600 dark:text-red-400">
-                  <WarningCircle size={16} weight="bold" className="mt-0.5 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
-
-              <div className="mt-4 space-y-3">
-                <label className="block">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                    Your Name (Optional)
-                  </span>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g., Abebe Kebede"
-                    className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                  />
-                </label>
-
-                {method === "email" ? (
-                  <label className="block">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Email Address
-                    </span>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="e.g., abebe@gmail.com"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                    />
-                    <span className="mt-1 block text-[11px] text-stone-400">
-                      A 6-digit OTP code will be sent to your email inbox.
-                    </span>
-                  </label>
-                ) : (
-                  <label className="block">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                      Phone Number
-                    </span>
-                    <input
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="0911 234 567 or +251 911 234 567"
-                      inputMode="tel"
-                      className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                    />
-                    <span className="mt-1 block text-[11px] text-stone-400">
-                      Supports Ethiopian numbers (09xx / 07xx) and international E.164 formats.
-                    </span>
-                  </label>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleRequestOtp}
-                  disabled={isSending || (method === "email" ? email.trim().length < 5 : phone.trim().length < 8)}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-orange-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-orange-500 disabled:opacity-50"
+              <div className="mt-6 space-y-2.5">
+                <Link
+                  to="/login"
+                  className="block w-full rounded-full bg-orange-600 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-orange-500"
                 >
-                  {isSending ? (
-                    <>
-                      <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                      <span>Sending verification code...</span>
-                    </>
-                  ) : (
-                    <span>Send Verification Code</span>
-                  )}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-display text-base font-extrabold text-stone-900 dark:text-white">
-                    Enter Verification Code
-                  </h3>
-                  <p className="mt-0.5 text-xs text-stone-500 dark:text-zinc-400">
-                    Sent via {method === "email" ? "Email" : "SMS"} to{" "}
-                    <span className="font-bold text-stone-800 dark:text-zinc-200">
-                      {method === "email" ? email : formatPhoneDisplay(phone)}
-                    </span>
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleChangeTarget}
-                  className="text-xs font-bold text-orange-600 hover:underline"
+                  Sign In
+                </Link>
+                <Link
+                  to="/register"
+                  className="block w-full rounded-full border border-stone-300 py-3 text-xs font-bold text-stone-700 transition hover:bg-stone-50 dark:border-white/15 dark:text-zinc-200 dark:hover:bg-white/5"
                 >
-                  Edit {method === "email" ? "email" : "phone"}
-                </button>
+                  Create an Account
+                </Link>
               </div>
 
-              {errorMessage && (
-                <div className="mt-3 flex items-start gap-2 rounded-xl bg-red-500/10 p-3 text-xs text-red-600 dark:text-red-400">
-                  <WarningCircle size={16} weight="bold" className="mt-0.5 shrink-0" />
-                  <span>{errorMessage}</span>
-                </div>
-              )}
-
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                    6-Digit Verification Code (OTP)
-                  </label>
-                  <input
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    inputMode="numeric"
-                    maxLength={6}
-                    placeholder="123456"
-                    autoFocus
-                    className="mt-1 w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-center text-xl font-mono font-extrabold tracking-[0.3em] outline-none transition focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleVerifyOtp}
-                  disabled={isVerifying || otp.trim().length < 6}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-stone-900 px-4 py-3 text-sm font-bold text-white transition hover:bg-stone-800 disabled:opacity-50 dark:bg-white dark:text-stone-900 dark:hover:bg-zinc-200"
+              <div className="mt-5 border-t border-stone-100 pt-4 dark:border-white/5">
+                <Link
+                  to="/menu"
+                  className="text-xs font-semibold text-stone-400 transition hover:text-stone-600 dark:hover:text-zinc-200"
                 >
-                  {isVerifying ? (
-                    <>
-                      <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                      <span>Verifying code...</span>
-                    </>
-                  ) : (
-                    <span>Verify & Sign In</span>
-                  )}
-                </button>
-
-                <div className="flex items-center justify-between text-xs text-stone-500 dark:text-zinc-400 pt-1">
-                  <span>Didn't receive the {method === "email" ? "email" : "SMS"}?</span>
-                  {cooldown > 0 ? (
-                    <span className="font-semibold text-stone-400">
-                      Resend in <span className="tabular-nums font-bold text-orange-600">{cooldown}s</span>
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleResend}
-                      disabled={isSending}
-                      className="font-bold text-orange-600 hover:underline"
-                    >
-                      Resend code
-                    </button>
-                  )}
-                </div>
+                  Continue to Menu as Guest →
+                </Link>
               </div>
-            </>
+            </div>
           )}
         </section>
 

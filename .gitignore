@@ -17,8 +17,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Supabase local telemetry & temp
+# Supabase local telemetry, temp & migration backups
 .supabase/
+supabase/.temp/
+supabase/backups/
 
 # Editor & OS files
 .DS_Store

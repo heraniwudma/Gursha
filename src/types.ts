@@ -27,7 +27,7 @@ export interface MenuItem {
   name: string;
   nameAm: string;
   nameSid: string;
-  desc: string;
+  desc?: string;
   price: number;
   category: CategoryId;
   image: string;
@@ -74,6 +74,8 @@ export interface Order {
   status: OrderStatus;
   eta: number;
   staffNote: string;
+  userId?: string | null;
+  guestLookupToken?: string | null;
 }
 
 export interface FaqItem {
@@ -212,6 +214,7 @@ export interface DeliverySettings {
 }
 
 export interface Session {
+  id?: string;
   name: string;
   phone: string;
   email?: string;
@@ -224,11 +227,21 @@ export interface AuthResult {
   success: boolean;
   error?: string;
   session?: Session | null;
+  needsEmailVerification?: boolean;
+  unverified?: boolean;
+}
+
+export interface ExtraOption {
+  id: string;
+  name: string;
+  price: number;
+  enabled: boolean;
 }
 
 export interface GurshaState {
   menu: MenuItem[];
   orders: Order[];
+  extras: ExtraOption[];
   cms: Cms;
   cart: CartItem[];
   session: Session | null;
@@ -239,12 +252,14 @@ export interface GurshaState {
   service: ServiceType;
   serviceChosen: boolean;
   deliverySettings: DeliverySettings;
+  guestOrderCodes: string[];
+  guestTokens: Record<string, string>;
 }
 
 export interface CartOptions {
   qty: number;
   base: BaseChoice;
-  spice: number;
+  spice?: number;
   extras: string[];
   extraPrice: number;
   note: string;
@@ -253,10 +268,10 @@ export interface CartOptions {
 export interface PlaceInput {
   customerName: string;
   phone: string;
-  service: ServiceType;
-  zone: string;
-  distanceKm: number;
-  address: string;
+  service?: ServiceType;
+  zone?: string;
+  distanceKm?: number;
+  address?: string;
   scheduledFor: number | null;
   payment: PaymentMethod;
   proofImage: string;
@@ -277,11 +292,11 @@ export interface GurshaContextValue extends GurshaState {
   removeFromCart: (uid: string) => void;
   clearCart: () => void;
   placeOrder: (i: PlaceInput) => Promise<Order>;
-  setStatus: (code: string, s: OrderStatus) => void;
-  advance: (code: string) => void;
-  submitProof: (code: string, image: string, note: string) => void;
-  approveProof: (code: string) => void;
-  rejectProof: (code: string, reason: string) => void;
+  setStatus: (code: string, s: OrderStatus) => Promise<{ success: boolean; error?: string }>;
+  advance: (code: string) => Promise<{ success: boolean; error?: string }>;
+  submitProof: (code: string, image: string, note?: string) => Promise<{ success: boolean; error?: string }>;
+  approveProof: (code: string) => Promise<{ success: boolean; error?: string }>;
+  rejectProof: (code: string, reason: string) => Promise<{ success: boolean; error?: string }>;
   requestOtp: (arg1: string, arg2?: string) => Promise<AuthResult>;
   verifyOtp: (code: string, phoneOverride?: string) => Promise<AuthResult>;
   logout: () => Promise<void>;
@@ -293,6 +308,17 @@ export interface GurshaContextValue extends GurshaState {
   requestAdminEmailOtp: (email: string) => Promise<AuthResult>;
   verifyAdminEmailOtp: (email: string, code: string) => Promise<AuthResult>;
   linkCustomerPhone: (phone: string) => Promise<AuthResult>;
+  updateCustomerProfile: (fullName: string, phone: string) => Promise<AuthResult>;
+  signUpCustomer: (email: string, password: string, name: string, phone?: string) => Promise<AuthResult>;
+  signInCustomer: (email: string, password: string) => Promise<AuthResult>;
+  resendVerification: (email: string) => Promise<AuthResult>;
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  verifyPasswordResetOtp: (email: string, code: string) => Promise<AuthResult>;
+  updatePassword: (password: string) => Promise<AuthResult>;
+  signInAdmin: (email: string, password: string) => Promise<AuthResult>;
+  changeAdminPassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<AuthResult>;
+  claimGuestOrder: (code: string, token: string) => Promise<{ success: boolean; error?: string }>;
+  fetchOrderDetails: (code: string, forceFresh?: boolean) => Promise<Order | null>;
   saveMenuItem: (item: MenuItem) => void;
   deleteMenuItem: (id: string) => void;
   toggleStock: (id: string) => void;
@@ -301,4 +327,8 @@ export interface GurshaContextValue extends GurshaState {
   refreshCms: () => Promise<void>;
   resetDemo: () => void;
   saveDeliverySettings: (settings: DeliverySettings) => Promise<void>;
+  saveExtras: (extras: ExtraOption[]) => Promise<void>;
+  saveExtraItem: (extra: ExtraOption) => Promise<void>;
+  toggleExtraStatus: (id: string) => Promise<void>;
+  deleteExtraItem: (id: string) => Promise<void>;
 }

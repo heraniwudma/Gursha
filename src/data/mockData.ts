@@ -1,4 +1,4 @@
-import type { Category, Cms, DeliverySettings, Lang, MenuItem } from "../types";
+import type { Category, Cms, DeliverySettings, ExtraOption, Lang, MenuItem } from "../types";
 
 export const IMG = {
   hero: "/images/gursha-hero.webp",
@@ -44,12 +44,17 @@ export const BASE_OPTIONS = [
   { label: "No base", price: 0 },
 ] as const;
 
-export const EXTRA_OPTIONS = [
-  { label: "Extra injera", price: 30 },
-  { label: "Ayib cheese", price: 45 },
-  { label: "Boiled egg", price: 35 },
-  { label: "Extra awaze", price: 20 },
+export const DEFAULT_EXTRAS: ExtraOption[] = [
+  { id: "extra-injera", name: "Extra injera", price: 30, enabled: true },
+  { id: "ayib-cheese", name: "Ayib cheese", price: 45, enabled: true },
+  { id: "boiled-egg", name: "Boiled egg", price: 35, enabled: true },
+  { id: "extra-awaze", name: "Extra awaze", price: 20, enabled: true },
 ];
+
+export const EXTRA_OPTIONS = DEFAULT_EXTRAS.map((e) => ({
+  label: e.name,
+  price: e.price,
+}));
 
 export const DRINK_ADDONS = [
   { label: "Ethiopian coffee", price: 60 },
@@ -81,10 +86,11 @@ export const serviceLabels: Record<string, { en: string; am: string; sid: string
 export const T: Record<Lang, Record<string, string>> = {
   en: {
     "nav.home": "Home", "nav.menu": "Menu", "nav.orders": "My Orders", "nav.admin": "Admin",
+    "nav.login": "Sign In", "nav.register": "Create Account", "nav.logout": "Sign Out", "nav.account": "My Account",
     "svc.dineIn": "Dine-In", "svc.takeaway": "Takeaway", "svc.delivery": "Delivery",
     "hero.title": "Hawassa flavour, one gursha at a time",
     "hero.sub": "Lake fish, slow-cooked doro wat and a live coffee ceremony — served in our café or brought to your door.",
-    "hero.cta": "Choose your service", "hero.menu": "Explore the menu",
+    "hero.cta": "Order now", "hero.menu": "Explore the menu",
     "home.featured": "Guest favourites", "home.featuredSub": "The plates Hawassa keeps ordering",
     "home.storyTitle": "The Gursha story", "home.storyBody": "In Ethiopia, a gursha is the first bite you offer someone you love. We built a café around that gesture: warm light, clay cups, and food meant to be shared.",
     "home.visitTitle": "Find us", "home.openNow": "Open now",
@@ -103,6 +109,7 @@ export const T: Record<Lang, Record<string, string>> = {
   },
   am: {
     "nav.home": "መነሻ", "nav.menu": "ምናሌ", "nav.orders": "ትዕዛዞቼ", "nav.support": "ድጋፍ", "nav.admin": "አስተዳደር",
+    "nav.login": "ግባ", "nav.register": "መለያ ፍጠር", "nav.logout": "ውጣ", "nav.account": "መለያዬ",
     "svc.dineIn": "በቦታው ላይ", "svc.takeaway": "መውሰጃ", "svc.delivery": "ማድረሻ",
     "hero.title": "የሐዋሳ ጣዕም በአንድ ጉርሻ",
     "hero.sub": "የሐዋሳ ዓሳ፣ በዝግታ የተሰራ ዶሮ ወጥ እና ቀጥታ የቡና ሥርዓት — በምግብ ቤታችን ወይም በቤትዎ።",
@@ -126,6 +133,7 @@ export const T: Record<Lang, Record<string, string>> = {
   },
   sid: {
     "nav.home": "Mine", "nav.menu": "Xaado", "nav.orders": "Ajajjate", "nav.support": "Kaaloo", "nav.admin": "Gashshoota",
+    "nav.login": "Eo", "nav.register": "Maddara loosidhie", "nav.logout": "Fuli", "nav.account": "Umanno'ya",
     "svc.dineIn": "Hikke", "svc.takeaway": "Adhama", "svc.delivery": "Sokka",
     "hero.title": "Hawassa xaadu, mitte gurshanni",
     "hero.sub": "Hawassa asa, doro wati qixxaantino nna buna loosu loosaati — ninke minanni woy abbaanki.",
@@ -162,8 +170,8 @@ export const SEED_CMS: Cms = {
   heroLocation: "Hawassa · Sidama Region",
   heroTitle: "Lake Hawassa's table for wood-fired flavours & slow wot",
   heroSubtitle: "From 40-year sourdough injera to freshly landed tilapia, Gursha brings the rich tapestry of southern Ethiopia together on one lakeside terrace.",
-  heroCtaText: "Explore & order",
-  heroCtaLink: "#service",
+  heroCtaText: "Order now",
+  heroCtaLink: "/menu",
   heroSecondaryCtaText: "Full menu",
   heroSecondaryCtaLink: "/menu",
   heroImage: IMG.hero,

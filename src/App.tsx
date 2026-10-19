@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Link, Navigate, NavLink, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import {
-  Clock, EnvelopeSimple, FacebookLogo, ForkKnife, House, InstagramLogo, MapPin, Moon, Phone,
+  Clock, EnvelopeSimple, FacebookLogo, ForkKnife, Globe, House, InstagramLogo, MapPin, Moon, Phone,
   Receipt, ShoppingCart, Sun, TelegramLogo, TiktokLogo, UserCircle,
 } from "@phosphor-icons/react";
 import { GurshaProvider, useGursha } from "./context/GurshaStore";
 import { CartDrawer, CartPage, HomePage, MenuPage, PolicyModal } from "./components/CustomerViews";
 import { CheckoutPage, OrderDetailPage, OrdersPage, ProfilePage } from "./components/CustomerPortal";
+import { CustomerLogin, CustomerRegister, CustomerResetPassword } from "./components/CustomerAuth";
 import { AdminDashboard, AdminOrders, AdminPayments, AdminProfile, AdminShell } from "./components/AdminViews";
-import { AdminCms, AdminMenu } from "./components/AdminManage";
+import { AdminCms, AdminExtras, AdminMenu } from "./components/AdminManage";
 
 const NAV = [
   { to: "/", label: "Home", Icon: House },
@@ -55,7 +56,7 @@ function formatSocialUrl(url?: string): string | null {
 }
 
 function SiteLayout() {
-  const { lang, setLang, theme, setTheme, cartCount, setCartOpen, cms } = useGursha();
+  const { lang, setLang, theme, setTheme, cartCount, setCartOpen, cms, session, logout, t } = useGursha();
   const [policyModal, setPolicyModal] = useState<"delivery" | "returns" | "privacy" | "terms" | null>(null);
 
   const brandParts = (cms.brandTagline || "Café Hawassa").split(" ");
@@ -94,20 +95,68 @@ function SiteLayout() {
           </Link>
 
           <nav className="ml-auto hidden items-center gap-1 lg:flex">
-            {NAV.map(({ to, label, Icon }) => (
-              <NavLink key={to} to={to} end={to === "/"}
-                className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
-                  isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
-                <Icon size={16} weight="bold" /> {label}
-              </NavLink>
-            ))}
+            <NavLink to="/" end
+              className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
+                isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
+              <House size={16} weight="bold" /> {t("nav.home")}
+            </NavLink>
+            <NavLink to="/menu"
+              className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
+                isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
+              <ForkKnife size={16} weight="bold" /> {t("nav.menu")}
+            </NavLink>
+            <NavLink to="/orders"
+              className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
+                isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
+              <Receipt size={16} weight="bold" /> {t("nav.orders")}
+            </NavLink>
+
+            {session?.verified ? (
+              <>
+                <NavLink to="/profile"
+                  className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
+                    isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
+                  <UserCircle size={16} weight="bold" /> {session.name ? session.name.split(" ")[0] : t("nav.account")}
+                </NavLink>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="rounded-full px-3 py-1.5 text-xs font-bold text-stone-500 transition-colors hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400"
+                >
+                  {t("nav.logout")}
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/login"
+                  className={({ isActive }) => `flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-bold transition-colors ${
+                    isActive ? "bg-orange-600/10 text-orange-700 dark:text-orange-300" : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"}`}>
+                  <UserCircle size={16} weight="bold" /> {t("nav.login")}
+                </NavLink>
+                <Link to="/register"
+                  className="rounded-full bg-orange-600/15 px-3.5 py-2 text-sm font-bold text-orange-700 transition-colors hover:bg-orange-600 hover:text-white dark:bg-orange-500/20 dark:text-orange-300 dark:hover:bg-orange-600 dark:hover:text-white">
+                  {t("nav.register")}
+                </Link>
+              </>
+            )}
           </nav>
 
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
-            <div className="hidden items-center rounded-full border border-stone-200 p-0.5 dark:border-white/10 sm:flex">
+            <div className="flex items-center rounded-full border border-stone-200 p-0.5 dark:border-white/10">
+              <Globe size={13} className="ml-1.5 hidden text-stone-400 sm:block" />
               {LANGS.map((l) => (
-                <button key={l.id} type="button" onClick={() => setLang(l.id)}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${lang === l.id ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900" : "text-stone-500 dark:text-zinc-400"}`}>
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => setLang(l.id)}
+                  aria-pressed={lang === l.id}
+                  aria-label={`Switch language to ${l.label}`}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                    lang === l.id
+                      ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900"
+                      : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"
+                  }`}
+                >
                   {l.label}
                 </button>
               ))}
@@ -126,13 +175,65 @@ function SiteLayout() {
           </div>
         </div>
 
-        <div className="gursha-scroll flex gap-1.5 overflow-x-auto border-t border-stone-200 px-4 py-2 dark:border-white/10 lg:hidden">
-          {NAV.map(({ to, label, Icon }) => (
-            <NavLink key={to} to={to} end={to === "/"}
-              className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
-              <Icon size={14} weight="bold" /> {label}
-            </NavLink>
-          ))}
+        <div className="gursha-scroll flex items-center gap-1.5 overflow-x-auto border-t border-stone-200 px-4 py-2 dark:border-white/10 lg:hidden">
+          <NavLink to="/" end
+            className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+            <House size={14} weight="bold" /> {t("nav.home")}
+          </NavLink>
+          <NavLink to="/menu"
+            className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+            <ForkKnife size={14} weight="bold" /> {t("nav.menu")}
+          </NavLink>
+          <NavLink to="/orders"
+            className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+            <Receipt size={14} weight="bold" /> {t("nav.orders")}
+          </NavLink>
+          {session?.verified ? (
+            <>
+              <NavLink to="/profile"
+                className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+                <UserCircle size={14} weight="bold" /> {t("nav.account")}
+              </NavLink>
+              <button
+                type="button"
+                onClick={logout}
+                className="shrink-0 rounded-full border border-stone-200 px-3 py-2 text-xs font-bold text-red-600 dark:border-white/10 dark:text-red-400"
+              >
+                {t("nav.logout")}
+              </button>
+            </>
+          ) : (
+            <>
+              <NavLink to="/login"
+                className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+                <UserCircle size={14} weight="bold" /> {t("nav.login")}
+              </NavLink>
+              <NavLink to="/register"
+                className={({ isActive }) => `flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold ${isActive ? "bg-orange-600 text-white" : "border border-stone-200 text-stone-500 dark:border-white/10 dark:text-zinc-400"}`}>
+                {t("nav.register")}
+              </NavLink>
+            </>
+          )}
+
+          <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
+            <Globe size={13} className="text-orange-600" />
+            {LANGS.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setLang(l.id)}
+                aria-pressed={lang === l.id}
+                aria-label={`Switch language to ${l.label}`}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  lang === l.id
+                    ? "bg-orange-600 text-white shadow-xs"
+                    : "border border-stone-200 text-stone-600 hover:text-stone-900 dark:border-white/10 dark:text-zinc-400 dark:hover:text-white"
+                }`}
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -294,7 +395,13 @@ export default function App() {
             <Route path="/checkout" element={<CheckoutPage />} />
             <Route path="/orders" element={<OrdersPage />} />
             <Route path="/orders/:code" element={<OrderDetailPage />} />
+            <Route path="/track" element={<OrdersPage />} />
+            <Route path="/track/:code" element={<OrderDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/login" element={<CustomerLogin />} />
+            <Route path="/register" element={<CustomerRegister />} />
+            <Route path="/reset-password" element={<CustomerResetPassword />} />
+            <Route path="/forgot-password" element={<CustomerResetPassword />} />
             <Route path="*" element={<NotFound />} />
           </Route>
           <Route path="/admin" element={<AdminShell />}>
@@ -302,6 +409,7 @@ export default function App() {
             <Route path="orders" element={<AdminOrders />} />
             <Route path="payments" element={<AdminPayments />} />
             <Route path="menu" element={<AdminMenu />} />
+            <Route path="extras" element={<AdminExtras />} />
             <Route path="cms" element={<AdminCms />} />
             <Route path="profile" element={<AdminProfile />} />
             <Route path="promotions" element={<Navigate to="/admin" replace />} />

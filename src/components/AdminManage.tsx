@@ -9,9 +9,9 @@ import {
   UploadSimple, WarningCircle, X,
 } from "@phosphor-icons/react";
 import { useGursha } from "../context/GurshaStore";
-import { Price, Stars } from "./CustomerViews";
+import { Price } from "./CustomerViews";
 import { CATEGORIES, IMG, SEED_CMS } from "../data/mockData";
-import type { CategoryId, Cms, MenuItem } from "../types";
+import type { CategoryId, Cms, ExtraOption, MenuItem } from "../types";
 
 const etb = (n: number) => `ETB ${n.toLocaleString()}`;
 const CARD = "rounded-3xl border border-stone-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-zinc-900";
@@ -284,7 +284,7 @@ export function AdminMenu() {
       nameAm: draft.nameAm || draft.name,
       nameSid: draft.nameSid || draft.name,
       image: draft.image || menu[0]?.image || "",
-      desc: draft.desc || "Freshly prepared at Gursha.",
+      desc: (draft.desc || "").trim(),
     });
 
     cancelForm();
@@ -354,7 +354,7 @@ export function AdminMenu() {
               </select>
             </div>
             <div>
-              <label className={LABEL}>Short Description</label>
+              <label className={LABEL}>Short Description (Optional)</label>
               <input
                 className={`${INPUT} mt-1`}
                 placeholder="e.g. Freshly seasoned minced lean beef..."
@@ -425,7 +425,7 @@ export function AdminMenu() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-stone-900 dark:text-white">{item.name}</p>
-                      <p className="truncate text-xs text-stone-400">{item.desc}</p>
+                      {item.desc?.trim() ? <p className="truncate text-xs text-stone-400">{item.desc}</p> : null}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <button
@@ -1626,6 +1626,435 @@ export function AdminCms() {
           form={form}
           onClose={() => setPreviewOpen(false)}
         />
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- extras admin */
+export function AdminExtras() {
+  const { extras, saveExtraItem, toggleExtraStatus, deleteExtraItem } = useGursha();
+  const [search, setSearch] = useState("");
+  const [editingExtra, setEditingExtra] = useState<ExtraOption | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [enabled, setEnabled] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; price?: string }>({});
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const activeCount = useMemo(() => extras.filter((e) => e.enabled).length, [extras]);
+  const disabledCount = useMemo(() => extras.filter((e) => !e.enabled).length, [extras]);
+
+  const filteredExtras = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return extras;
+    return extras.filter((e) => e.name.toLowerCase().includes(term));
+  }, [extras, search]);
+
+  const openAddModal = () => {
+    setEditingExtra(null);
+    setName("");
+    setPrice("");
+    setEnabled(true);
+    setErrors({});
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (extra: ExtraOption) => {
+    setEditingExtra(extra);
+    setName(extra.name);
+    setPrice(extra.price.toString());
+    setEnabled(extra.enabled);
+    setErrors({});
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    if (isSubmitting) return;
+    setIsModalOpen(false);
+    setEditingExtra(null);
+    setName("");
+    setPrice("");
+    setErrors({});
+  };
+
+  const validate = (): boolean => {
+    const newErrors: { name?: string; price?: string } = {};
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      newErrors.name = "Extra name cannot be empty.";
+    }
+
+    const numPrice = Number(price);
+    if (price.trim() === "" || isNaN(numPrice) || numPrice < 0) {
+      newErrors.price = "Please enter a valid, non-negative price amount.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
+    setIsSubmitting(true);
+
+    try {
+      const extraPayload: ExtraOption = {
+        id: editingExtra?.id || `extra-${Date.now()}`,
+        name: name.trim(),
+        price: Math.round(Number(price)),
+        enabled,
+      };
+
+      await saveExtraItem(extraPayload);
+      setIsModalOpen(false);
+      setEditingExtra(null);
+    } catch (err: any) {
+      console.error("Failed to save extra:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleToggle = async (extra: ExtraOption) => {
+    try {
+      await toggleExtraStatus(extra.id);
+      toast.success(`"${extra.name}" is now ${!extra.enabled ? "active" : "disabled"}.`);
+    } catch (err) {
+      console.error("Toggle error:", err);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteExtraItem(id);
+      setDeleteConfirmId(null);
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Head
+        title="Manage Extras & Add-ons"
+        sub="Configure optional meal extras, side portions, and their current prices. Updated prices immediately apply to new customer orders while preserving historical order totals."
+      />
+
+      {/* 1. Quick Stats Overview */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className={`${CARD} flex items-center justify-between`}>
+          <div>
+            <p className={LABEL}>Total Extras</p>
+            <p className="mt-1 font-display text-2xl font-black text-stone-900 dark:text-white">
+              {extras.length}
+            </p>
+          </div>
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-100 text-stone-600 dark:bg-white/5 dark:text-zinc-300">
+            <Sparkle size={20} weight="bold" />
+          </div>
+        </div>
+
+        <div className={`${CARD} flex items-center justify-between`}>
+          <div>
+            <p className={LABEL}>Active Extras</p>
+            <p className="mt-1 font-display text-2xl font-black text-emerald-600 dark:text-emerald-400">
+              {activeCount}
+            </p>
+          </div>
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+            <CheckCircle size={20} weight="bold" />
+          </div>
+        </div>
+
+        <div className={`${CARD} flex items-center justify-between`}>
+          <div>
+            <p className={LABEL}>Disabled Extras</p>
+            <p className="mt-1 font-display text-2xl font-black text-stone-400 dark:text-zinc-500">
+              {disabledCount}
+            </p>
+          </div>
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-zinc-500">
+            <WarningCircle size={20} weight="bold" />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Action Controls Bar */}
+      <div className={`${CARD} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`}>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search extras by name..."
+            className={`${INPUT} pr-9`}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
+            >
+              <X size={15} weight="bold" />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={openAddModal}
+          className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-500"
+        >
+          <Plus size={16} weight="bold" />
+          <span>Add New Extra</span>
+        </button>
+      </div>
+
+      {/* 3. Extras List Grid & Cards */}
+      {filteredExtras.length === 0 ? (
+        <div className={`${CARD} py-14 text-center`}>
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-stone-100 text-stone-400 dark:bg-white/5 dark:text-zinc-500">
+            <Sparkle size={24} weight="bold" />
+          </div>
+          <h3 className="mt-3 font-display text-base font-bold text-stone-800 dark:text-zinc-200">
+            {search ? "No matching extras found" : "No extras configured yet"}
+          </h3>
+          <p className="mt-1 text-xs text-stone-400 dark:text-zinc-500">
+            {search
+              ? "Try clearing your search term or add a new extra option."
+              : "Click 'Add New Extra' above to create custom add-ons for your customer orders."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filteredExtras.map((extra) => (
+            <div
+              key={extra.id}
+              className={`${CARD} flex flex-col justify-between transition-all ${
+                !extra.enabled ? "opacity-70 dark:opacity-60" : ""
+              }`}
+            >
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-orange-50 font-display text-sm font-black text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
+                      +
+                    </span>
+                    <div>
+                      <h4 className="font-display text-base font-bold text-stone-900 dark:text-white">
+                        {extra.name}
+                      </h4>
+                      <div className="mt-0.5 flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            extra.enabled
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+                              : "bg-stone-100 text-stone-500 dark:bg-zinc-800 dark:text-zinc-400"
+                          }`}
+                        >
+                          {extra.enabled ? "Active · In Menu" : "Disabled · Hidden"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="font-display text-lg font-black text-orange-600 dark:text-orange-400">
+                      ETB {extra.price.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-stone-100 pt-3 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => handleToggle(extra)}
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                    extra.enabled
+                      ? "bg-stone-100 text-stone-700 hover:bg-stone-200 dark:bg-white/5 dark:text-zinc-300 dark:hover:bg-white/10"
+                      : "bg-emerald-600 text-white hover:bg-emerald-500"
+                  }`}
+                >
+                  {extra.enabled ? "Disable extra" : "Enable extra"}
+                </button>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(extra)}
+                    className="flex items-center gap-1 rounded-lg border border-stone-200 px-3 py-1.5 text-xs font-bold text-stone-700 transition hover:border-orange-500 hover:text-orange-600 dark:border-white/10 dark:text-zinc-300 dark:hover:border-orange-400 dark:hover:text-orange-400"
+                  >
+                    <PencilSimple size={14} weight="bold" />
+                    <span>Edit</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmId(extra.id)}
+                    className="flex items-center gap-1 rounded-lg border border-transparent p-1.5 text-stone-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                    aria-label={`Delete ${extra.name}`}
+                  >
+                    <Trash size={15} weight="bold" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirmation prompt for deletion */}
+              {deleteConfirmId === extra.id && (
+                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50/70 p-3 text-xs text-red-800 dark:border-red-900/40 dark:bg-red-950/40 dark:text-red-300">
+                  <p className="font-bold">Permanently delete "{extra.name}"?</p>
+                  <p className="mt-1 text-[11px] opacity-80">
+                    Disabling this extra is recommended instead to preserve historical clarity.
+                  </p>
+                  <div className="mt-2.5 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(extra.id)}
+                      className="rounded-lg bg-red-600 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-red-500"
+                    >
+                      Confirm Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="rounded-lg border border-stone-300 bg-white px-2.5 py-1 text-xs font-bold text-stone-700 hover:bg-stone-50 dark:border-white/10 dark:bg-zinc-800 dark:text-zinc-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 4. Add / Edit Extra Modal */}
+      {isModalOpen && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-stone-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-white p-6 shadow-2xl dark:bg-zinc-900 sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-stone-100 pb-4 dark:border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
+                  <Sparkle size={18} weight="bold" />
+                </div>
+                <h3 className="font-display text-lg font-bold text-stone-900 dark:text-white">
+                  {editingExtra ? "Edit Extra" : "Add New Extra"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                disabled={isSubmitting}
+                className="grid h-8 w-8 place-items-center rounded-full text-stone-400 hover:bg-stone-100 dark:hover:bg-white/5"
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSave} className="mt-5 space-y-4">
+              <div>
+                <label className={LABEL}>
+                  Extra Name <span className="text-orange-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (errors.name) setErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
+                  placeholder="e.g. Extra injera, Ayib cheese, Boiled egg"
+                  className={`${INPUT} mt-1`}
+                  autoFocus
+                />
+                {errors.name && (
+                  <p className="mt-1 text-xs font-semibold text-red-500">{errors.name}</p>
+                )}
+              </div>
+
+              <div>
+                <label className={LABEL}>
+                  Price (ETB) <span className="text-orange-600">*</span>
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={price}
+                    onChange={(e) => {
+                      setPrice(e.target.value);
+                      if (errors.price) setErrors((prev) => ({ ...prev, price: undefined }));
+                    }}
+                    placeholder="30"
+                    className={`${INPUT} pr-12`}
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
+                    ETB
+                  </span>
+                </div>
+                {errors.price && (
+                  <p className="mt-1 text-xs font-semibold text-red-500">{errors.price}</p>
+                )}
+                <p className={HINT}>
+                  Set to 0 if this extra option is complimentary.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-3.5 dark:border-white/10 dark:bg-white/5">
+                <label className="flex cursor-pointer items-center justify-between">
+                  <div>
+                    <span className="text-sm font-bold text-stone-800 dark:text-zinc-200">
+                      Enable for customer ordering
+                    </span>
+                    <p className="text-xs text-stone-500 dark:text-zinc-400">
+                      When enabled, customers can select this extra during meal customization.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={enabled}
+                    onChange={(e) => setEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-stone-300 text-orange-600 focus:ring-orange-500"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-6 flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={isSubmitting}
+                  className="rounded-xl border border-stone-300 px-4 py-2.5 text-sm font-bold text-stone-700 transition hover:bg-stone-50 disabled:opacity-50 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-500 disabled:opacity-50"
+                >
+                  {isSubmitting && (
+                    <ArrowClockwise size={15} weight="bold" className="animate-spin" />
+                  )}
+                  <span>{editingExtra ? "Save Changes" : "Create Extra"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

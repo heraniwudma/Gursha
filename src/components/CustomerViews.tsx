@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight, Bicycle, Check, Clock, Copy, EnvelopeSimple, Fire,
   ForkKnife, Info, Leaf, MagnifyingGlass, MapPin, Minus, Package,
-  Plus, QrCode, Question, SealCheck, ShieldCheck, ShoppingCart, Sparkle, Star,
+  Plus, QrCode, Question, SealCheck, ShieldCheck, ShoppingCart, Sparkle,
   Storefront, Tag, Trash, X,
 } from "@phosphor-icons/react";
 import { useGursha } from "../context/GurshaStore";
@@ -20,20 +20,8 @@ export function Price({ n, className = "" }: { n: number; className?: string }) 
   return <span className={`tabular-nums ${className}`}>{money(t("common.etb"), n)}</span>;
 }
 
-export function Stars({ value, size = 14 }: { value: number; size?: number }) {
-  const rounded = Math.round(value);
-  return (
-    <span className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star
-          key={i}
-          size={size}
-          weight={i <= rounded ? "fill" : "regular"}
-          className={i <= rounded ? "text-orange-500" : "text-stone-300 dark:text-zinc-600"}
-        />
-      ))}
-    </span>
-  );
+export function Stars(_props: { value?: number; size?: number }) {
+  return null;
 }
 
 export function SectionHead({ eyebrow, title, sub, right }: { eyebrow: string; title: string; sub?: string; right?: React.ReactNode }) {
@@ -53,99 +41,6 @@ export function SectionHead({ eyebrow, title, sub, right }: { eyebrow: string; t
 }
 
 const dishName = (m: MenuItem, lang: string) => (lang === "am" ? m.nameAm : lang === "sid" ? m.nameSid : m.name);
-
-/* ------------------------------------------------------------- service selector */
-const SERVICE_META: Record<ServiceType, { Icon: typeof Storefront; desc: string; hint: string }> = {
-  "dine-in": { Icon: QrCode, desc: "Scan the QR code on your table, order in place and we serve it hot.", hint: "5% service charge · table tracking included" },
-  takeaway: { Icon: Package, desc: "Order ahead and collect from the counter on Lake Shore Road.", hint: "Ready in about 20 minutes" },
-  delivery: { Icon: Bicycle, desc: "We ride to your address anywhere inside Hawassa city.", hint: "Fee scales with distance · 30–120 ETB" },
-};
-
-export function ServiceSelector() {
-  const { t, lang, service, setService, deliverySettings } = useGursha();
-  const [flash, setFlash] = useState(false);
-  const meta = SERVICE_META[service];
-  const labels: Record<ServiceType, string> = { "dine-in": t("svc.dineIn"), takeaway: t("svc.takeaway"), delivery: t("svc.delivery") };
-
-  const enabledDestinations = (deliverySettings?.destinations || []).filter((d) => d.enabled);
-  const deliveryAvailable = (deliverySettings?.enabled ?? true) && enabledDestinations.length > 0;
-
-  return (
-    <div id="service" className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm dark:border-white/10 dark:bg-zinc-900">
-      <div className="grid grid-cols-3 divide-x divide-stone-200 dark:divide-white/10">
-        {(Object.keys(SERVICE_META) as ServiceType[]).map((s) => {
-          const Icon = SERVICE_META[s].Icon;
-          const active = service === s;
-          const isDeliveryOff = s === "delivery" && !deliveryAvailable;
-          return (
-            <button
-              key={s}
-              type="button"
-              disabled={isDeliveryOff}
-              onClick={() => {
-                if (isDeliveryOff) return;
-                setService(s);
-                setFlash(true);
-                window.setTimeout(() => setFlash(false), 900);
-              }}
-              className={`flex flex-col items-center gap-2 px-3 py-4 text-sm font-bold transition-colors sm:flex-row sm:justify-center sm:gap-2.5 ${
-                active
-                  ? "bg-orange-600 text-white"
-                  : isDeliveryOff
-                  ? "cursor-not-allowed bg-stone-50 text-stone-400 opacity-60 dark:bg-white/5 dark:text-zinc-600"
-                  : "text-stone-600 hover:bg-stone-100 dark:text-zinc-300 dark:hover:bg-white/5"
-              }`}
-            >
-              <Icon size={20} weight="bold" />
-              <span>{labels[s]}{isDeliveryOff ? " (Off)" : ""}</span>
-            </button>
-          );
-        })}
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={service}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.18 }}
-          className="flex flex-wrap items-center justify-between gap-4 px-5 py-5"
-        >
-          <div className="max-w-xl">
-            <p className="font-display text-lg font-bold text-stone-900 dark:text-white">
-              {flash ? `${labels[service]} selected` : meta.desc}
-            </p>
-            <p className="mt-1 text-sm text-stone-500 dark:text-zinc-400">
-              {service === "delivery" && !deliveryAvailable
-                ? "Delivery is currently unavailable. Please choose Dine-in or Takeaway."
-                : meta.hint}
-            </p>
-          </div>
-          <a
-            href="#featured"
-            className="flex items-center gap-2 rounded-full bg-stone-900 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-orange-600 dark:bg-white dark:text-stone-900 dark:hover:bg-orange-500 dark:hover:text-white"
-          >
-            <ForkKnife size={16} weight="bold" />
-            {t("hero.menu")}
-          </a>
-        </motion.div>
-      </AnimatePresence>
-      {service === "delivery" && (
-        <div className="border-t border-stone-200 bg-stone-50 px-5 py-3 text-xs font-semibold text-stone-600 dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-          {deliveryAvailable ? (
-            <span>
-              Available Destinations: {enabledDestinations.map((z) => `${z.name} (${money("ETB", zoneFee(z.distanceKm))})`).join(" · ")}
-            </span>
-          ) : (
-            <span className="text-amber-700 dark:text-amber-400">
-              Delivery is currently disabled by administrator. Dine-In and Takeaway orders remain active.
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ homepage */
 export function HomePage() {
@@ -200,18 +95,19 @@ export function HomePage() {
               {cms.heroSubtitle || t("hero.sub")}
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <a
-                href={cms.heroCtaLink || "#service"}
+              <button
+                type="button"
+                onClick={() => navigate(cms.heroCtaLink && !cms.heroCtaLink.startsWith("#") ? cms.heroCtaLink : "/menu")}
                 className="rounded-full bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-lg transition-colors hover:bg-orange-500"
               >
-                {cms.heroCtaText || t("hero.cta")}
-              </a>
+                {cms.heroCtaText && cms.heroCtaText !== "Choose service" ? cms.heroCtaText : t("menu.title")}
+              </button>
               <button
                 type="button"
                 onClick={() => navigate(cms.heroSecondaryCtaLink || "/menu")}
                 className="rounded-full border border-white/30 px-6 py-3 text-sm font-bold text-white backdrop-blur transition-colors hover:bg-white/10"
               >
-                {cms.heroSecondaryCtaText || t("menu.title")}
+                {cms.heroSecondaryCtaText || t("hero.cta")}
               </button>
               {cms.visibility?.heroBadge !== false && (
                 <span className="flex items-center gap-2 rounded-full bg-white/10 px-4 py-2.5 text-xs font-bold text-white backdrop-blur">
@@ -223,11 +119,6 @@ export function HomePage() {
           </div>
         </section>
       )}
-
-      {/* 2. Service Selector */}
-      <section className="mx-auto -mt-32 max-w-7xl px-4 sm:px-6 lg:px-8">
-        <ServiceSelector />
-      </section>
 
       {/* 3. Promotional Campaign Banner (if enabled) */}
       {showPromo && cms.promoBanner && (
@@ -321,10 +212,9 @@ export function HomePage() {
                     <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{m.name}</h3>
                     {m.fasting && <Leaf size={15} weight="bold" className="mt-0.5 shrink-0 text-emerald-600" />}
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-xs text-stone-500 dark:text-zinc-400">{m.desc}</p>
+                  {m.desc?.trim() ? <p className="mt-1.5 line-clamp-2 text-xs text-stone-500 dark:text-zinc-400">{m.desc}</p> : null}
                   <div className="mt-3 flex items-center justify-between">
                     <Price n={m.price} className="text-sm font-extrabold text-orange-600" />
-                    <Stars value={m.rating} size={12} />
                   </div>
                 </div>
               </motion.button>
@@ -367,21 +257,22 @@ export function HomePage() {
 }
 
 /* ---------------------------------------------------------------------- menu */
-type SortKey = "popular" | "price-asc" | "price-desc" | "rating";
+type SortKey = "popular" | "price-asc" | "price-desc";
 
 type BaseLabel = "Injera" | "Kita bread" | "No base";
 
 function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
-  const { t, lang, addToCart } = useGursha();
+  const { t, lang, addToCart, extras: storeExtras } = useGursha();
   const [qty, setQty] = useState(1);
   const [base, setBase] = useState<BaseLabel>("Injera");
-  const [spice, setSpice] = useState(item.spice);
   const [extras, setExtras] = useState<string[]>([]);
   const [drink, setDrink] = useState<string | null>(null);
   const [note, setNote] = useState("");
 
+  const activeExtras = useMemo(() => (storeExtras || []).filter((e) => e.enabled), [storeExtras]);
+
   const basePrice = BASE_OPTIONS.find((b) => b.label === base)?.price ?? 0;
-  const extrasPrice = extras.reduce((a, label) => a + (EXTRA_OPTIONS.find((e) => e.label === label)?.price ?? 0), 0);
+  const extrasPrice = extras.reduce((a, label) => a + (activeExtras.find((e) => e.name === label)?.price ?? 0), 0);
   const drinkPrice = drink ? DRINK_ADDONS.find((d) => d.label === drink)?.price ?? 0 : 0;
   const unit = item.price + basePrice + extrasPrice + drinkPrice;
   const paidBase: BaseChoice = base === "Kita bread" ? "Bread" : base === "No base" ? "None" : "Injera";
@@ -405,14 +296,12 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
         <div className="space-y-5 p-5">
           <div>
             <h3 className="font-display text-xl font-extrabold text-stone-900 dark:text-white">{dishName(item, lang)}</h3>
-            <p className="mt-1.5 text-sm text-stone-500 dark:text-zinc-400">{item.desc}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-stone-500 dark:text-zinc-400">
-              <span className="flex items-center gap-1">
-                <Fire size={14} weight="fill" className="text-orange-500" /> Spice {spice}/3
-              </span>
-              {item.fasting && <span className="flex items-center gap-1 text-emerald-600"><Leaf size={14} weight="bold" /> Fasting friendly</span>}
-              <Stars value={item.rating} size={13} />
-            </div>
+            {item.desc?.trim() ? <p className="mt-1.5 text-sm text-stone-500 dark:text-zinc-400">{item.desc}</p> : null}
+            {item.fasting && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-stone-500 dark:text-zinc-400">
+                <span className="flex items-center gap-1 text-emerald-600"><Leaf size={14} weight="bold" /> Fasting friendly</span>
+              </div>
+            )}
           </div>
 
           <div>
@@ -427,33 +316,23 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
             </div>
           </div>
 
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Spice level</p>
-            <div className="flex gap-2">
-              {[0, 1, 2, 3].map((s) => (
-                <button key={s} type="button" onClick={() => setSpice(s)}
-                  className={`flex-1 rounded-xl border py-2 text-xs font-bold transition-colors ${spice === s ? "border-orange-600 bg-orange-600/10 text-orange-700 dark:text-orange-300" : "border-stone-300 text-stone-500 dark:border-white/15 dark:text-zinc-400"}`}>
-                  {s === 0 ? "None" : "🌶".repeat(s)}
-                </button>
-              ))}
+          {activeExtras.length > 0 && (
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Extras</p>
+              <div className="flex flex-wrap gap-2">
+                {activeExtras.map((e) => {
+                  const on = extras.includes(e.name);
+                  return (
+                    <button key={e.id || e.name} type="button"
+                      onClick={() => setExtras((s) => (on ? s.filter((x) => x !== e.name) : [...s, e.name]))}
+                      className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${on ? "border-orange-600 bg-orange-600 text-white" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
+                      {e.name}{e.price > 0 ? ` +${e.price}` : ""}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Extras</p>
-            <div className="flex flex-wrap gap-2">
-              {EXTRA_OPTIONS.map((e) => {
-                const on = extras.includes(e.label);
-                return (
-                  <button key={e.label} type="button"
-                    onClick={() => setExtras((s) => (on ? s.filter((x) => x !== e.label) : [...s, e.label]))}
-                    className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${on ? "border-orange-600 bg-orange-600 text-white" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
-                    {e.label}{e.price > 0 ? ` +${e.price}` : ""}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          )}
 
           <div>
             <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Add a drink</p>
@@ -479,7 +358,7 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
             <button
               type="button"
               onClick={() => {
-                addToCart(item, { qty, base: paidBase, spice, extras: drink ? [...extras, drink] : extras, extraPrice: basePrice + extrasPrice + drinkPrice, note });
+                addToCart(item, { qty, base: paidBase, spice: item.spice ?? 0, extras: drink ? [...extras, drink] : extras, extraPrice: basePrice + extrasPrice + drinkPrice, note });
                 onClose();
               }}
               className="flex flex-1 items-center justify-center gap-2 rounded-full bg-orange-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-orange-500"
@@ -506,11 +385,10 @@ export function MenuPage() {
   const list = useMemo(() => {
     const term = q.trim().toLowerCase();
     let out = menu.filter((m) => (cat === "all" || m.category === cat) &&
-      (!term || `${m.name} ${m.nameAm} ${m.nameSid} ${m.desc}`.toLowerCase().includes(term)));
+      (!term || `${m.name} ${m.nameAm || ""} ${m.nameSid || ""} ${m.desc || ""}`.toLowerCase().includes(term)));
     out = [...out].sort((a, b) => {
       if (sort === "price-asc") return a.price - b.price;
       if (sort === "price-desc") return b.price - a.price;
-      if (sort === "rating") return b.rating - a.rating;
       return Number(b.popular) - Number(a.popular);
     });
     return out;
@@ -520,7 +398,6 @@ export function MenuPage() {
     { id: "popular", label: "Most popular" },
     { id: "price-asc", label: "Price low → high" },
     { id: "price-desc", label: "Price high → low" },
-    { id: "rating", label: "Top rated" },
   ];
 
   return (
@@ -591,15 +468,12 @@ export function MenuPage() {
                   <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{dishName(m, lang)}</h3>
                   <Price n={m.price} className="shrink-0 text-sm font-extrabold text-orange-600" />
                 </div>
-                <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">{m.desc}</p>
-                <div className="mt-3 flex items-center gap-3 text-[11px] font-bold text-stone-400">
-                  <span className="flex items-center gap-0.5">
-                    {Array.from({ length: m.spice }).map((_, k) => <Fire key={k} size={13} weight="fill" className="text-orange-500" />)}
-                    {m.spice === 0 && "Mild"}
-                  </span>
-                  {m.fasting && <span className="flex items-center gap-1 text-emerald-600"><Leaf size={13} weight="bold" /> Fasting</span>}
-                  <Stars value={m.rating} size={12} />
-                </div>
+                {m.desc?.trim() ? <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">{m.desc}</p> : null}
+                {m.fasting && (
+                  <div className="mt-3 flex items-center gap-3 text-[11px] font-bold text-stone-400">
+                    <span className="flex items-center gap-1 text-emerald-600"><Leaf size={13} weight="bold" /> Fasting</span>
+                  </div>
+                )}
                 <button
                   type="button"
                   disabled={!m.inStock}
@@ -631,7 +505,7 @@ function CartLine({ c }: { c: CartItem }) {
           <Price n={(c.basePrice + c.extraPrice) * c.qty} className="text-sm font-extrabold text-orange-600" />
         </div>
         <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-          {c.base} · {c.spice === 0 ? "No spice" : "Spice " + c.spice + "/3"}
+          {c.base}
           {c.extras.length > 0 ? ` · ${c.extras.join(", ")}` : ""}
         </p>
         {c.note && <p className="mt-1 text-xs italic text-stone-400">“{c.note}”</p>}
@@ -662,7 +536,6 @@ function CartTotals() {
         <dt>{t("checkout.total")}</dt>
         <dd className="tabular-nums text-orange-600"><Price n={cartSubtotal} /></dd>
       </div>
-      <p className="text-xs text-stone-400">Delivery and service charges are calculated at checkout.</p>
     </dl>
   );
 }
