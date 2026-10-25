@@ -6,12 +6,46 @@ import {
   normalizeOrderStatus,
   normalizeProofStatus,
 } from "../lib/orders";
-import { validateEmail, validatePassword } from "../lib/auth";
+import { validateEmail, validatePassword, verifyCurrentUserIsAdmin, signInAdmin } from "../lib/auth";
 import { normalizePhoneNumber, validatePhoneNumber } from "../lib/phone";
 import { ORDER_SUMMARY_SELECT } from "../context/GurshaStore";
 import { resolveProofImageUrl } from "../lib/storage";
 
 describe("Phase 3: Auth Input Validation and Admin Authorization", () => {
+  it("authorizes user with role admin in app_metadata", async () => {
+    const adminUser = {
+      id: "test-admin-uuid",
+      email: "admin@gurshacafe.et",
+      app_metadata: { role: "admin" },
+    };
+    const isAdmin = await verifyCurrentUserIsAdmin(adminUser);
+    expect(isAdmin).toBe(true);
+  });
+
+  it("rejects non-admin user without admin role or database record", async () => {
+    const regularUser = {
+      id: "test-regular-uuid",
+      email: "customer@example.com",
+      app_metadata: { role: "customer" },
+    };
+    const isAdmin = await verifyCurrentUserIsAdmin(regularUser);
+    expect(isAdmin).toBe(false);
+  });
+
+  it("rejects null or empty user in verifyCurrentUserIsAdmin", async () => {
+    const isAdmin = await verifyCurrentUserIsAdmin(null);
+    expect(isAdmin).toBe(false);
+  });
+
+  it("validates admin login credentials correctly", async () => {
+    const invalidEmailRes = await signInAdmin("notanemail", "password123");
+    expect(invalidEmailRes.success).toBe(false);
+    expect(invalidEmailRes.error).toContain("valid email");
+
+    const emptyPwRes = await signInAdmin("admin@gurshacafe.et", "");
+    expect(emptyPwRes.success).toBe(false);
+    expect(emptyPwRes.error).toContain("password");
+  });
   it("validates and normalizes customer/admin emails correctly", () => {
     const valid = validateEmail("  Admin@Guresha.COM ");
     expect(valid.valid).toBe(true);

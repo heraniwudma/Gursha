@@ -28,6 +28,8 @@ export interface MenuItem {
   nameAm: string;
   nameSid: string;
   desc?: string;
+  descAm?: string;
+  descSid?: string;
   price: number;
   category: CategoryId;
   image: string;
@@ -245,6 +247,7 @@ export interface GurshaState {
   cms: Cms;
   cart: CartItem[];
   session: Session | null;
+  authLoading: boolean;
   adminAuthed: boolean;
   adminOtp: string;
   lang: Lang;
@@ -325,6 +328,7 @@ export interface GurshaContextValue extends GurshaState {
   saveCms: (c: Cms) => Promise<Cms>;
   restoreDefaultCms?: () => Promise<void>;
   refreshCms: () => Promise<void>;
+  refreshMenu?: () => Promise<void>;
   resetDemo: () => void;
   saveDeliverySettings: (settings: DeliverySettings) => Promise<void>;
   saveExtras: (extras: ExtraOption[]) => Promise<void>;

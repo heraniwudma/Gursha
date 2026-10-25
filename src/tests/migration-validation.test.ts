@@ -101,22 +101,24 @@ describe("2. Dynamic Extras & Drink Add-ons Pricing Verification", () => {
     return { totalExtraPrice: sum, valid: true };
   }
 
+  it("confirms the three additional items (Ethiopian coffee, Soft drink, Ambo water) are removed from checkout DRINK_ADDONS", () => {
+    expect(DRINK_ADDONS.length).toBe(0);
+    const labels = DRINK_ADDONS.map((d) => d.label.toLowerCase());
+    expect(labels.includes("ethiopian coffee")).toBe(false);
+    expect(labels.includes("soft drink")).toBe(false);
+    expect(labels.includes("ambo water")).toBe(false);
+  });
+
   it("correctly validates and prices food extras", () => {
     const res = resolveExtras(["Extra injera", "Ayib cheese"], storeExtrasConfig);
     expect(res.valid).toBe(true);
     expect(res.totalExtraPrice).toBe(30 + 45); // 75
   });
 
-  it("correctly validates and prices drink add-ons", () => {
-    const res = resolveExtras(["Ethiopian coffee", "Ambo water"], storeExtrasConfig);
+  it("correctly handles orders with zero extras or drinks", () => {
+    const res = resolveExtras([], storeExtrasConfig);
     expect(res.valid).toBe(true);
-    expect(res.totalExtraPrice).toBe(60 + 40); // 100
-  });
-
-  it("correctly prices combination of food extras and drink add-on", () => {
-    const res = resolveExtras(["Extra awaze", "Soft drink"], storeExtrasConfig);
-    expect(res.valid).toBe(true);
-    expect(res.totalExtraPrice).toBe(20 + 45); // 65
+    expect(res.totalExtraPrice).toBe(0);
   });
 
   it("rejects unknown extras", () => {

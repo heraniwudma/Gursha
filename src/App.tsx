@@ -84,9 +84,9 @@ function SiteLayout() {
 
       {/* 2. Header */}
       <header className="sticky top-0 z-50 border-b border-stone-200 bg-white/85 backdrop-blur-md dark:border-white/10 dark:bg-zinc-950/85">
-        <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-3.5">
-          <Link to="/" className="flex items-center gap-2.5">
-            <span className="font-display text-2xl font-extrabold leading-none tracking-tight text-orange-600">
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3.5">
+          <Link to="/" className="flex items-center gap-2">
+            <span className="font-display text-xl font-extrabold leading-none tracking-tight text-orange-600 sm:text-2xl">
               {cms.brandName || "Gursha"}
             </span>
             <span className="hidden text-[10px] font-bold uppercase leading-tight tracking-[0.18em] text-stone-400 sm:block">
@@ -141,7 +141,7 @@ function SiteLayout() {
             )}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+          <div className="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
             <div className="flex items-center rounded-full border border-stone-200 p-0.5 dark:border-white/10">
               <Globe size={13} className="ml-1.5 hidden text-stone-400 sm:block" />
               {LANGS.map((l) => (
@@ -151,7 +151,7 @@ function SiteLayout() {
                   onClick={() => setLang(l.id)}
                   aria-pressed={lang === l.id}
                   aria-label={`Switch language to ${l.label}`}
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold transition-colors sm:px-2.5 sm:py-1 sm:text-[11px] ${
                     lang === l.id
                       ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900"
                       : "text-stone-500 hover:text-stone-900 dark:text-zinc-400 dark:hover:text-white"
@@ -162,14 +162,14 @@ function SiteLayout() {
               ))}
             </div>
             <button type="button" aria-label="Toggle theme" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="grid h-10 w-10 place-items-center rounded-full border border-stone-200 text-stone-600 dark:border-white/10 dark:text-zinc-300">
-              {theme === "dark" ? <Sun size={17} weight="bold" /> : <Moon size={17} weight="bold" />}
+              className="grid h-8 w-8 place-items-center rounded-full border border-stone-200 text-stone-600 transition hover:bg-stone-100 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-white/10 sm:h-10 sm:w-10">
+              {theme === "dark" ? <Sun size={15} weight="bold" className="sm:size-[17px]" /> : <Moon size={15} weight="bold" className="sm:size-[17px]" />}
             </button>
             <button type="button" onClick={() => setCartOpen(true)} aria-label="Open cart"
-              className="relative grid h-10 w-10 place-items-center rounded-full bg-orange-600 text-white shadow-sm transition hover:scale-105 active:scale-95">
-              <ShoppingCart size={18} weight="bold" />
+              className="relative grid h-8 w-8 place-items-center rounded-full bg-orange-600 text-white shadow-sm transition hover:scale-105 active:scale-95 sm:h-10 sm:w-10">
+              <ShoppingCart size={16} weight="bold" className="sm:size-[18px]" />
               {cartCount > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[10px] font-extrabold text-orange-600 ring-2 ring-orange-600">{cartCount}</span>
+                <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-white px-1 text-[9px] font-extrabold text-orange-600 ring-1 ring-orange-600 sm:h-5 sm:min-w-5 sm:text-[10px] sm:ring-2">{cartCount}</span>
               )}
             </button>
           </div>
@@ -214,26 +214,6 @@ function SiteLayout() {
               </NavLink>
             </>
           )}
-
-          <div className="ml-auto flex shrink-0 items-center gap-1 pl-2">
-            <Globe size={13} className="text-orange-600" />
-            {LANGS.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setLang(l.id)}
-                aria-pressed={lang === l.id}
-                aria-label={`Switch language to ${l.label}`}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
-                  lang === l.id
-                    ? "bg-orange-600 text-white shadow-xs"
-                    : "border border-stone-200 text-stone-600 hover:text-stone-900 dark:border-white/10 dark:text-zinc-400 dark:hover:text-white"
-                }`}
-              >
-                {l.label}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
@@ -301,7 +281,7 @@ function SiteLayout() {
             )}
           </div>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Visit us</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("footer.visitUs")}</p>
             <ul className="mt-3 space-y-2 text-sm text-stone-500 dark:text-zinc-400">
               {cms.address?.trim() && (
                 <li className="flex items-start gap-2">
@@ -334,20 +314,20 @@ function SiteLayout() {
             </ul>
           </div>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Explore & Policies</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("footer.explore")}</p>
             <ul className="mt-3 space-y-2 text-sm">
-              {NAV.slice(1, 4).map(({ to, label }) => (
-                <li key={to}><Link to={to} className="text-stone-500 hover:text-orange-600 dark:text-zinc-400">{label}</Link></li>
-              ))}
+              <li><Link to="/menu" className="text-stone-500 hover:text-orange-600 dark:text-zinc-400">{t("nav.menu")}</Link></li>
+              <li><Link to="/orders" className="text-stone-500 hover:text-orange-600 dark:text-zinc-400">{t("nav.orders")}</Link></li>
+              <li><Link to="/profile" className="text-stone-500 hover:text-orange-600 dark:text-zinc-400">{t("nav.account")}</Link></li>
               <li>
                 <button type="button" onClick={() => setPolicyModal("privacy")} className="text-left text-stone-500 hover:text-orange-600 dark:text-zinc-400">
-                  Privacy policy
+                  {t("footer.privacy")}
                 </button>
               </li>
             </ul>
           </div>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Call ahead</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("footer.callAhead")}</p>
             {cms.phone?.trim() && (
               <p className="font-display mt-3 text-lg font-extrabold text-stone-900 dark:text-white">
                 <a href={`tel:${cms.phone.trim().replace(/\s+/g, "")}`} className="transition-colors hover:text-orange-600">
@@ -361,7 +341,7 @@ function SiteLayout() {
           </div>
         </div>
         <p className="border-t border-stone-200 py-5 text-center text-xs text-stone-400 dark:border-white/10">
-          {cms.copyrightText?.trim() || `© ${new Date().getFullYear()} Gursha Café. All rights reserved.`}
+          {cms.copyrightText?.trim() || `© ${new Date().getFullYear()} Gursha Café. ${t("footer.rights")}.`}
         </p>
       </footer>
 

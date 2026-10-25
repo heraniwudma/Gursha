@@ -36,7 +36,7 @@ const NAV = [
 ];
 
 function AdminLogin() {
-  const { signInAdmin } = useGursha();
+  const { signInAdmin, t } = useGursha();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -62,7 +62,7 @@ function AdminLogin() {
     try {
       const res = await signInAdmin(normalized, password);
       if (!res.success) {
-        setErrorMessage(res.error || "Invalid administrator credentials or unauthorized account.");
+        setErrorMessage(res.error || "Failed to authenticate administrator. Please check your credentials.");
       }
     } finally {
       setIsSubmitting(false);
@@ -75,7 +75,7 @@ function AdminLogin() {
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-orange-600 text-white shadow-md shadow-orange-600/20">
           <Lock size={24} weight="bold" />
         </span>
-        <h1 className="font-display mt-5 text-2xl font-extrabold text-stone-900 dark:text-white">Admin Dashboard</h1>
+        <h1 className="font-display mt-5 text-2xl font-extrabold text-stone-900 dark:text-white">{t("admin.dashboard")}</h1>
         <p className="mt-1.5 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">
           Restricted access. Authorized Gursha Cafe administrators only.
         </p>
@@ -90,7 +90,7 @@ function AdminLogin() {
         <form onSubmit={handlePasswordLogin} className="mt-5 space-y-4">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Administrator Email
+              {t("auth.email")}
             </label>
             <input
               type="email"
@@ -106,8 +106,14 @@ function AdminLogin() {
           <div>
             <div className="flex items-center justify-between">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                Password
+                {t("auth.password")}
               </label>
+              <Link
+                to="/forgot-password"
+                className="text-[11px] font-semibold text-orange-600 hover:text-orange-500 hover:underline"
+              >
+                Forgot password?
+              </Link>
             </div>
             <div className="relative mt-1">
               <input
@@ -141,7 +147,7 @@ function AdminLogin() {
                 <span>Verifying credentials...</span>
               </>
             ) : (
-              <span>Sign in to Admin Dashboard</span>
+              <span>{t("admin.signIn")}</span>
             )}
           </button>
         </form>
@@ -152,10 +158,21 @@ function AdminLogin() {
 
 
 export function AdminShell() {
-  const { t, adminAuthed, adminLogout, orders } = useGursha();
+  const { t, adminAuthed, authLoading, adminLogout, orders } = useGursha();
   const navigate = useNavigate();
   const pendingProofs = orders.filter((o) => o.proofStatus === "pending").length;
   const liveOrders = orders.filter((o) => !["completed", "cancelled"].includes(o.status)).length;
+
+  if (authLoading) {
+    return (
+      <div className="mx-auto grid min-h-[60vh] place-items-center px-4 py-16">
+        <div className="flex flex-col items-center gap-3 text-stone-500 dark:text-zinc-400">
+          <ArrowCounterClockwise size={32} weight="bold" className="animate-spin text-orange-600" />
+          <p className="text-sm font-medium">Verifying administrator session...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!adminAuthed) return <AdminLogin />;
 
@@ -171,24 +188,43 @@ export function AdminShell() {
               <span className="font-display text-base font-extrabold text-stone-900 dark:text-white">Gursha Admin</span>
             </Link>
             <nav className="gursha-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 lg:flex-col lg:overflow-visible">
-              {NAV.map(({ to, label, Icon, end }) => (
-                <NavLink key={to} to={to} end={end}
-                  className={({ isActive }) => `flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
-                    isActive ? "bg-orange-600 text-white" : "text-stone-600 hover:bg-stone-100 dark:text-zinc-300 dark:hover:bg-white/5"}`}>
-                  <Icon size={17} weight="bold" />
-                  {label}
-                  {badge(label) > 0 && (
-                    <span className="ml-auto rounded-full bg-white px-1.5 py-0.5 text-[10px] font-extrabold tabular-nums text-orange-600">{badge(label)}</span>
-                  )}
-                </NavLink>
-              ))}
+              {NAV.map(({ to, label, Icon, end }) => {
+                const navKey =
+                  label === "Dashboard"
+                    ? "admin.dashboard"
+                    : label === "Orders"
+                    ? "admin.orders"
+                    : label === "Payments"
+                    ? "admin.payments"
+                    : label === "Menu"
+                    ? "admin.menu"
+                    : label === "Extras"
+                    ? "admin.extras"
+                    : label === "Content"
+                    ? "admin.cms"
+                    : label === "Profile"
+                    ? "admin.profile"
+                    : "";
+                const displayLabel = navKey ? t(navKey) : label;
+                return (
+                  <NavLink key={to} to={to} end={end}
+                    className={({ isActive }) => `flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                      isActive ? "bg-orange-600 text-white" : "text-stone-600 hover:bg-stone-100 dark:text-zinc-300 dark:hover:bg-white/5"}`}>
+                    <Icon size={17} weight="bold" />
+                    {displayLabel}
+                    {badge(label) > 0 && (
+                      <span className="ml-auto rounded-full bg-white px-1.5 py-0.5 text-[10px] font-extrabold tabular-nums text-orange-600">{badge(label)}</span>
+                    )}
+                  </NavLink>
+                );
+              })}
             </nav>
             <div className="mt-4 space-y-1 border-t border-stone-200 pt-4 dark:border-white/10">
               <button type="button" onClick={() => navigate("/")} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-stone-500 hover:bg-stone-100 dark:text-zinc-400 dark:hover:bg-white/5">
-                <Storefront size={17} weight="bold" /> View storefront
+                <Storefront size={17} weight="bold" /> {t("admin.viewStorefront")}
               </button>
               <button type="button" onClick={adminLogout} className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-red-600 hover:bg-red-500/10">
-                <SignOut size={17} weight="bold" /> Sign out
+                <SignOut size={17} weight="bold" /> {t("admin.signOut")}
               </button>
             </div>
           </div>

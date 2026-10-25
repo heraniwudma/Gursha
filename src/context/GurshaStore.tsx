@@ -9,6 +9,7 @@ import {
   DEFAULT_DELIVERY_SETTINGS, DEFAULT_EXTRAS, MENU, SEED_CMS, T, zoneFee,
 } from "../data/mockData";
 import { supabase } from "@/integrations/supabase/client";
+import { prodMenuClient, fetchProductionMenuItems } from "@/integrations/supabase/prodMenuClient";
 import { normalizePhoneNumber, validatePhoneNumber } from "../lib/phone";
 import {
   checkIsAdmin,
@@ -73,6 +74,7 @@ const SEED: GurshaState = {
   deliverySettings: DEFAULT_DELIVERY_SETTINGS,
   cart: [],
   session: null,
+  authLoading: true,
   adminAuthed: false,
   adminOtp: "",
   lang: "en",
@@ -151,6 +153,7 @@ function load(): GurshaState {
         ...SEED,
         ...parsed,
         lang: initialLang,
+        authLoading: true,
         adminAuthed: false,
         cms: cmsData,
         extras: extrasData,
@@ -217,7 +220,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
         if (mounted && authSession?.user) {
           const u = authSession.user;
           const normEmail = u.email ? u.email.trim().toLowerCase() : "";
-          const isAdmin = await verifyCurrentUserIsAdmin();
+          const isAdmin = await verifyCurrentUserIsAdmin(u);
 
           // Try fetching from profiles table
           let resolvedName = u.user_metadata?.full_name || normEmail.split("@")[0] || "Customer";
@@ -247,10 +250,14 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
               at: Date.now(),
             },
             adminAuthed: isAdmin,
+            authLoading: false,
           }));
+        } else if (mounted) {
+          setState((prev) => ({ ...prev, authLoading: false }));
         }
       } catch (err) {
         console.warn("[GurshaStore] restoreAuthSession notice:", err);
+        if (mounted) setState((prev) => ({ ...prev, authLoading: false }));
       }
     }
 
@@ -258,11 +265,11 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, authSession) => {
       if (event === "SIGNED_OUT" && mounted) {
-        setState((prev) => ({ ...prev, session: null, adminAuthed: false, adminOtp: "" }));
+        setState((prev) => ({ ...prev, session: null, adminAuthed: false, adminOtp: "", authLoading: false }));
       } else if (mounted && authSession?.user) {
         const u = authSession.user;
         const normEmail = u.email ? u.email.trim().toLowerCase() : "";
-        const isAdmin = await verifyCurrentUserIsAdmin();
+        const isAdmin = await verifyCurrentUserIsAdmin(u);
 
         let resolvedName = u.user_metadata?.full_name || normEmail.split("@")[0] || "Customer";
         let resolvedPhone = u.user_metadata?.phone || u.phone || "";
@@ -290,8 +297,11 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
             verified: isVerified,
             at: Date.now(),
           },
-          adminAuthed: isAdmin,
+          adminAuthed: prev.adminAuthed || isAdmin,
+          authLoading: false,
         }));
+      } else if (mounted) {
+        setState((prev) => ({ ...prev, authLoading: false }));
       }
     });
 
@@ -425,52 +435,85 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
     loadSupabaseDeliverySettings();
   }, []);
 
-  useEffect(() => {
-    async function loadSupabaseCustomMenu() {
-      try {
-        // Primary: query public store_settings table
-        const { data: ssData, error: ssErr } = await (supabase.from("store_settings") as any)
-          .select("value")
-          .eq("key", "menu")
-          .maybeSingle();
+  const refreshMenu = useCallback(async () => {
+    try {
+      const prodItems = await fetchProductionMenuItems();
+      if (prodItems && prodItems.length > 0) {
+        setState((prev) => {
+          const itemMap = new Map<string, MenuItem>();
+          // 1. Authoritative production menu items
+          prodItems.forEach((item) => itemMap.set(item.id, item));
 
-        if (!ssErr && ssData?.value) {
-          const parsed = typeof ssData.value === "string" ? JSON.parse(ssData.value) : ssData.value;
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setState((prev) => {
-              const map = new Map<string, MenuItem>();
-              prev.menu.forEach((m) => map.set(m.id, m));
-              parsed.forEach((m: MenuItem) => map.set(m.id, m));
-              return { ...prev, menu: Array.from(map.values()) };
-            });
-            return;
-          }
-        }
+          // 2. Preserve any local custom staging items (e.g. starting with "m-")
+          prev.menu.forEach((item) => {
+            if (item.id.startsWith("m-") && !itemMap.has(item.id)) {
+              itemMap.set(item.id, item);
+            }
+          });
 
-        // Backward-compatible fallback to customer_sessions
-        const { data, error } = await supabase
-          .from("customer_sessions")
-          .select("name")
-          .eq("phone", "__custom_menu__")
-          .maybeSingle();
-
-        if (!error && data?.name) {
-          const parsed = JSON.parse(data.name);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setState((prev) => {
-              const map = new Map<string, MenuItem>();
-              prev.menu.forEach((m) => map.set(m.id, m));
-              parsed.forEach((m: MenuItem) => map.set(m.id, m));
-              return { ...prev, menu: Array.from(map.values()) };
-            });
-          }
-        }
-      } catch (err) {
-        console.warn("Notice: Local menu active. Supabase sync available.", err);
+          return {
+            ...prev,
+            menu: Array.from(itemMap.values()),
+          };
+        });
+        return;
       }
+    } catch (err) {
+      console.warn("Notice: Production menu sync notice. Falling back to local/staging state.", err);
     }
-    loadSupabaseCustomMenu();
+
+    // Staging fallback if production is unreachable
+    try {
+      const { data: ssData, error: ssErr } = await (supabase.from("store_settings") as any)
+        .select("value")
+        .eq("key", "menu")
+        .maybeSingle();
+
+      if (!ssErr && ssData?.value) {
+        const parsed = typeof ssData.value === "string" ? JSON.parse(ssData.value) : ssData.value;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setState((prev) => {
+            const map = new Map<string, MenuItem>();
+            prev.menu.forEach((m) => map.set(m.id, m));
+            parsed.forEach((m: MenuItem) => map.set(m.id, m));
+            return { ...prev, menu: Array.from(map.values()) };
+          });
+        }
+      }
+    } catch (fallbackErr) {
+      console.warn("Notice: Local menu active. Supabase sync available.", fallbackErr);
+    }
   }, []);
+
+  useEffect(() => {
+    refreshMenu();
+
+    // Subscribe to Realtime changes on production public.menu_items
+    const channel = prodMenuClient
+      .channel("prod_menu_items_sync")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "menu_items",
+        },
+        () => {
+          refreshMenu();
+        }
+      )
+      .subscribe();
+
+    const onFocus = () => {
+      refreshMenu();
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      prodMenuClient.removeChannel(channel);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshMenu]);
 
   useEffect(() => {
     async function loadSupabaseExtras() {
@@ -810,7 +853,22 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
         ? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))
         : null;
 
-      const { data: rpcRes, error: rpcErr } = await (supabase.rpc as any)("create_order", {
+      interface CreateOrderRpcResponse {
+        order_id: string;
+        code: string;
+        total: number;
+        subtotal: number;
+        delivery_fee: number;
+        delivery_charge: number;
+        service_fee: number;
+        service_charge: number;
+        guest_lookup_token: string | null;
+        status: OrderStatus;
+        payment_method: string;
+        created_at: string;
+      }
+
+      const { data: rawRpcRes, error: rpcErr } = await supabase.rpc("create_order", {
         p_order: {
           customer_name: i.customerName.trim(),
           phone: i.phone.trim(),
@@ -830,6 +888,8 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
           note: c.note || "",
         })),
       });
+
+      const rpcRes = rawRpcRes as unknown as CreateOrderRpcResponse | null;
 
       if (rpcErr || !rpcRes || !rpcRes.code) {
         const msg = rpcErr?.message || "Order creation could not be verified by the database";
@@ -852,7 +912,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
       if (i.payment !== "cash" && i.proofImage && i.proofImage.trim().length > 0) {
         try {
           proofPayload = await uploadPaymentProofImage(i.proofImage, code);
-          await (supabase.rpc as any)("submit_payment_proof", {
+          await supabase.rpc("submit_payment_proof", {
             p_code: code,
             p_token: guestLookupToken || "",
             p_image: proofPayload,
@@ -1368,7 +1428,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
 
   const adminLogout = useCallback(async () => {
     await signOutAuth();
-    patch({ adminAuthed: false, adminOtp: "" });
+    patch({ adminAuthed: false, authLoading: false, adminOtp: "" });
     toast.info("Admin session closed");
   }, [patch]);
 
@@ -1772,6 +1832,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
           at: Date.now(),
         },
         adminAuthed: true,
+        authLoading: false,
         adminOtp: "",
       });
       toast.success("Administrator session verified — welcome to Gursha Admin");
@@ -1954,6 +2015,29 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
           }).then(null, () => {});
         }
       });
+
+      if (s.adminAuthed) {
+        (supabase.from("menu_items") as any).upsert({
+          id: item.id,
+          name: item.name,
+          name_am: item.nameAm || null,
+          name_sid: item.nameSid || null,
+          desc: item.desc || "",
+          desc_am: item.descAm || null,
+          desc_sid: item.descSid || null,
+          description: item.desc || "",
+          description_am: item.descAm || null,
+          description_sid: item.descSid || null,
+          price: item.price,
+          category_id: item.category,
+          image: item.image,
+          spice: item.spice ?? 0,
+          rating: item.rating ?? 5,
+          popular: Boolean(item.popular),
+          fasting: Boolean(item.fasting),
+          in_stock: item.inStock !== false,
+        }).then(null, () => {});
+      }
 
       return { ...s, menu: updatedMenu };
     });
@@ -2230,7 +2314,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
       claimGuestOrder,
       fetchOrderDetails,
       saveMenuItem, deleteMenuItem, toggleStock,
-      saveCms, restoreDefaultCms, refreshCms, resetDemo,
+      saveCms, restoreDefaultCms, refreshCms, refreshMenu, resetDemo,
       saveDeliverySettings,
       saveExtras, saveExtraItem, toggleExtraStatus, deleteExtraItem,
     }),
@@ -2246,7 +2330,7 @@ export function GurshaProvider({ children }: { children: React.ReactNode }) {
       claimGuestOrder,
       fetchOrderDetails,
       saveMenuItem, deleteMenuItem, toggleStock,
-      saveCms, restoreDefaultCms, refreshCms, resetDemo,
+      saveCms, restoreDefaultCms, refreshCms, refreshMenu, resetDemo,
       saveDeliverySettings,
       saveExtras, saveExtraItem, toggleExtraStatus, deleteExtraItem,
     ],

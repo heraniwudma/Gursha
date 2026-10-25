@@ -12,6 +12,7 @@ import {
   BASE_OPTIONS, CATEGORIES, DRINK_ADDONS, DELIVERY_ZONES, EXTRA_OPTIONS, IMG, zoneFee,
 } from "../data/mockData";
 import type { BaseChoice, CartItem, MenuItem, ServiceType } from "../types";
+import { getLocalizedDishName, getLocalizedDishDesc } from "../lib/localize";
 
 export const money = (label: string, n: number) => `${label} ${n.toLocaleString()}`;
 
@@ -40,11 +41,9 @@ export function SectionHead({ eyebrow, title, sub, right }: { eyebrow: string; t
   );
 }
 
-const dishName = (m: MenuItem, lang: string) => (lang === "am" ? m.nameAm : lang === "sid" ? m.nameSid : m.name);
-
 /* ------------------------------------------------------------------ homepage */
 export function HomePage() {
-  const { t, cms, menu } = useGursha();
+  const { t, lang, cms, menu } = useGursha();
   const navigate = useNavigate();
   const [copiedCode, setCopiedCode] = useState(false);
 
@@ -127,7 +126,7 @@ export function HomePage() {
             <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="max-w-2xl">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-extrabold uppercase tracking-widest text-white backdrop-blur">
-                  <Sparkle size={14} weight="fill" /> {cms.promoBanner.badge || "Special Offer"}
+                  <Sparkle size={14} weight="fill" /> {cms.promoBanner.badge || t("home.specialOffer")}
                 </span>
                 <h2 className="font-display mt-3 text-2xl font-extrabold sm:text-3xl lg:text-4xl">
                   {cms.promoBanner.title}
@@ -137,7 +136,7 @@ export function HomePage() {
                 </p>
                 {cms.promoBanner.code && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-white/80">Use code:</span>
+                    <span className="text-xs font-bold uppercase tracking-wider text-white/80">{t("home.useCode")}</span>
                     <button
                       type="button"
                       onClick={() => copyPromo(cms.promoBanner.code)}
@@ -147,7 +146,7 @@ export function HomePage() {
                       <span className="font-mono tracking-wider">{cms.promoBanner.code}</span>
                       {copiedCode ? <Check size={14} weight="bold" className="text-emerald-600" /> : <Copy size={14} />}
                     </button>
-                    {copiedCode && <span className="text-xs font-bold text-white">Copied!</span>}
+                    {copiedCode && <span className="text-xs font-bold text-white">{t("home.copied")}</span>}
                   </div>
                 )}
               </div>
@@ -157,7 +156,7 @@ export function HomePage() {
                   onClick={() => navigate(cms.promoBanner.ctaLink || "/menu")}
                   className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-extrabold text-stone-950 shadow-lg transition-transform hover:scale-105"
                 >
-                  {cms.promoBanner.ctaText || "Order now"} <ArrowRight size={16} weight="bold" />
+                  {cms.promoBanner.ctaText || t("hero.cta")} <ArrowRight size={16} weight="bold" />
                 </button>
               </div>
             </div>
@@ -203,16 +202,16 @@ export function HomePage() {
               >
                 <img
                   src={m.image}
-                  alt={m.name}
+                  alt={getLocalizedDishName(m, lang)}
                   loading="lazy"
                   className="h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{m.name}</h3>
+                    <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{getLocalizedDishName(m, lang)}</h3>
                     {m.fasting && <Leaf size={15} weight="bold" className="mt-0.5 shrink-0 text-emerald-600" />}
                   </div>
-                  {m.desc?.trim() ? <p className="mt-1.5 line-clamp-2 text-xs text-stone-500 dark:text-zinc-400">{m.desc}</p> : null}
+                  {getLocalizedDishDesc(m, lang) ? <p className="mt-1.5 line-clamp-2 text-xs text-stone-500 dark:text-zinc-400">{getLocalizedDishDesc(m, lang)}</p> : null}
                   <div className="mt-3 flex items-center justify-between">
                     <Price n={m.price} className="text-sm font-extrabold text-orange-600" />
                   </div>
@@ -234,9 +233,9 @@ export function HomePage() {
           />
           <div className="gursha-grid grid gap-5 rounded-3xl border border-stone-200 bg-white p-6 dark:border-white/10 dark:bg-zinc-900 sm:grid-cols-3">
             {[
-              { Icon: Clock, label: "Opening hours", value: cms.hours },
-              { Icon: MapPin, label: "Find us", value: cms.address },
-              { Icon: SealCheck, label: "Reservations & Contact", value: cms.phone },
+              { Icon: Clock, label: t("home.hours"), value: cms.hours },
+              { Icon: MapPin, label: t("home.visitTitle"), value: cms.address },
+              { Icon: SealCheck, label: t("home.contact"), value: cms.phone },
             ].map(({ Icon, label, value }) => (
               <div key={label} className="rounded-2xl bg-white/85 p-5 backdrop-blur dark:bg-zinc-900/85">
                 <Icon size={22} weight="bold" className="text-orange-600" />
@@ -288,29 +287,33 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
         className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white dark:bg-zinc-900 sm:rounded-3xl"
       >
         <div className="relative">
-          <img src={item.image} alt={item.name} className="h-48 w-full object-cover" />
-          <button type="button" onClick={onClose} aria-label="Close" className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-stone-800 backdrop-blur">
+          <img src={item.image} alt={getLocalizedDishName(item, lang)} className="h-48 w-full object-cover" />
+          <button type="button" onClick={onClose} aria-label={t("common.close")} className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-white/90 text-stone-800 backdrop-blur">
             <X size={17} weight="bold" />
           </button>
         </div>
         <div className="space-y-5 p-5">
           <div>
-            <h3 className="font-display text-xl font-extrabold text-stone-900 dark:text-white">{dishName(item, lang)}</h3>
-            {item.desc?.trim() ? <p className="mt-1.5 text-sm text-stone-500 dark:text-zinc-400">{item.desc}</p> : null}
+            <h3 className="font-display text-xl font-extrabold text-stone-900 dark:text-white">{getLocalizedDishName(item, lang)}</h3>
+            {getLocalizedDishDesc(item, lang) ? <p className="mt-1.5 text-sm text-stone-500 dark:text-zinc-400">{getLocalizedDishDesc(item, lang)}</p> : null}
             {item.fasting && (
               <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-stone-500 dark:text-zinc-400">
-                <span className="flex items-center gap-1 text-emerald-600"><Leaf size={14} weight="bold" /> Fasting friendly</span>
+                <span className="flex items-center gap-1 text-emerald-600"><Leaf size={14} weight="bold" /> {t("custom.fasting")}</span>
               </div>
             )}
           </div>
 
           <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Base</p>
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("custom.base")}</p>
             <div className="flex flex-wrap gap-2">
-              {BASE_OPTIONS.map((b) => (
-                <button key={b.label} type="button" onClick={() => setBase(b.label as BaseLabel)}
+              {[
+                { label: "Injera" as const, name: t("base.injera"), price: 0 },
+                { label: "Kita bread" as const, name: t("base.kita"), price: 25 },
+                { label: "No base" as const, name: t("base.none"), price: 0 },
+              ].map((b) => (
+                <button key={b.label} type="button" onClick={() => setBase(b.label)}
                   className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${base === b.label ? "border-orange-600 bg-orange-600 text-white" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
-                  {b.label}{b.price > 0 ? ` +${b.price}` : ""}
+                  {b.name}{b.price > 0 ? ` +${b.price}` : ""}
                 </button>
               ))}
             </div>
@@ -318,7 +321,7 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
 
           {activeExtras.length > 0 && (
             <div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Extras</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("custom.extras")}</p>
               <div className="flex flex-wrap gap-2">
                 {activeExtras.map((e) => {
                   const on = extras.includes(e.name);
@@ -334,26 +337,28 @@ function ItemModal({ item, onClose }: { item: MenuItem; onClose: () => void }) {
             </div>
           )}
 
-          <div>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">Add a drink</p>
-            <div className="flex flex-wrap gap-2">
-              {DRINK_ADDONS.map((d) => (
-                <button key={d.label} type="button" onClick={() => setDrink(drink === d.label ? null : d.label)}
-                  className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${drink === d.label ? "border-orange-600 bg-orange-600 text-white" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
-                  {d.label} +{d.price}
-                </button>
-              ))}
+          {DRINK_ADDONS.length > 0 && (
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">{t("custom.drink")}</p>
+              <div className="flex flex-wrap gap-2">
+                {DRINK_ADDONS.map((d) => (
+                  <button key={d.label} type="button" onClick={() => setDrink(drink === d.label ? null : d.label)}
+                    className={`rounded-full border px-3.5 py-1.5 text-xs font-bold transition-colors ${drink === d.label ? "border-orange-600 bg-orange-600 text-white" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
+                    {d.label} +{d.price}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={lang === "en" ? "Kitchen note (optional)" : "Kitchen note (optional)"}
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={t("custom.notePlaceholder")}
             className="w-full rounded-xl border border-stone-300 bg-white p-3 text-sm text-stone-800 outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
 
-          <div className="flex items-center gap-3 border-t border-stone-200 pt-4 dark:border-white/10">
-            <div className="flex items-center gap-1 rounded-full border border-stone-300 p-1 dark:border-white/15">
-              <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Decrease" className="grid h-8 w-8 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Minus size={14} weight="bold" /></button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 border-t border-stone-200 pt-4 dark:border-white/10">
+            <div className="flex items-center justify-center gap-1 rounded-full border border-stone-300 p-1 dark:border-white/15">
+              <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label={t("common.decrease")} className="grid h-8 w-8 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Minus size={14} weight="bold" /></button>
               <span className="w-7 text-center text-sm font-bold tabular-nums text-stone-900 dark:text-white">{qty}</span>
-              <button type="button" onClick={() => setQty((q) => Math.min(20, q + 1))} aria-label="Increase" className="grid h-8 w-8 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Plus size={14} weight="bold" /></button>
+              <button type="button" onClick={() => setQty((q) => Math.min(20, q + 1))} aria-label={t("common.increase")} className="grid h-8 w-8 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Plus size={14} weight="bold" /></button>
             </div>
             <button
               type="button"
@@ -395,9 +400,9 @@ export function MenuPage() {
   }, [menu, cat, q, sort]);
 
   const SORTS: { id: SortKey; label: string }[] = [
-    { id: "popular", label: "Most popular" },
-    { id: "price-asc", label: "Price low → high" },
-    { id: "price-desc", label: "Price high → low" },
+    { id: "popular", label: t("sort.popular") },
+    { id: "price-asc", label: t("sort.priceAsc") },
+    { id: "price-desc", label: t("sort.priceDesc") },
   ];
 
   return (
@@ -409,7 +414,7 @@ export function MenuPage() {
           <MagnifyingGlass size={17} className="text-stone-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("menu.search")}
             className="w-full bg-transparent text-sm text-stone-800 outline-none placeholder:text-stone-400 dark:text-zinc-100" />
-          {q && <button type="button" onClick={() => setQ("")} aria-label="Clear search"><X size={15} weight="bold" className="text-stone-400" /></button>}
+          {q && <button type="button" onClick={() => setQ("")} aria-label={t("menu.clearSearch")}><X size={15} weight="bold" className="text-stone-400" /></button>}
         </label>
         <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
           <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}
@@ -453,10 +458,10 @@ export function MenuPage() {
               }`}
             >
               <div className="relative">
-                <img src={m.image} alt={m.name} loading="lazy" className="h-44 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img src={m.image} alt={getLocalizedDishName(m, lang)} loading="lazy" className="h-44 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 {m.popular && (
                   <span className="absolute left-3 top-3 flex items-center gap-1 rounded-full bg-orange-600 px-2.5 py-1 text-[11px] font-bold text-white">
-                    <Sparkle size={11} weight="fill" /> Popular
+                    <Sparkle size={11} weight="fill" /> {t("menu.popular")}
                   </span>
                 )}
                 {!m.inStock && (
@@ -465,13 +470,13 @@ export function MenuPage() {
               </div>
               <div className="flex flex-1 flex-col p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{dishName(m, lang)}</h3>
+                  <h3 className="font-display text-base font-bold leading-tight text-stone-900 dark:text-white">{getLocalizedDishName(m, lang)}</h3>
                   <Price n={m.price} className="shrink-0 text-sm font-extrabold text-orange-600" />
                 </div>
-                {m.desc?.trim() ? <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">{m.desc}</p> : null}
+                {getLocalizedDishDesc(m, lang) ? <p className="mt-2 line-clamp-2 flex-1 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">{getLocalizedDishDesc(m, lang)}</p> : null}
                 {m.fasting && (
                   <div className="mt-3 flex items-center gap-3 text-[11px] font-bold text-stone-400">
-                    <span className="flex items-center gap-1 text-emerald-600"><Leaf size={13} weight="bold" /> Fasting</span>
+                    <span className="flex items-center gap-1 text-emerald-600"><Leaf size={13} weight="bold" /> {t("menu.fasting")}</span>
                   </div>
                 )}
                 <button
@@ -496,27 +501,31 @@ export function MenuPage() {
 
 /* ---------------------------------------------------------------------- cart */
 function CartLine({ c }: { c: CartItem }) {
-  const { setQty, removeFromCart } = useGursha();
+  const { lang, menu, t, setQty, removeFromCart } = useGursha();
+  const menuItem = menu.find((m) => m.id === c.itemId);
+  const displayName = menuItem ? getLocalizedDishName(menuItem, lang) : c.name;
+  const baseLabel = c.base === "Bread" ? t("base.kita") : c.base === "None" ? t("base.none") : t("base.injera");
+
   return (
     <div className="flex gap-3 rounded-2xl border border-stone-200 p-3 dark:border-white/10">
       <div className="flex-1">
         <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-bold text-stone-900 dark:text-white">{c.name}</p>
+          <p className="text-sm font-bold text-stone-900 dark:text-white">{displayName}</p>
           <Price n={(c.basePrice + c.extraPrice) * c.qty} className="text-sm font-extrabold text-orange-600" />
         </div>
         <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-          {c.base}
+          {baseLabel}
           {c.extras.length > 0 ? ` · ${c.extras.join(", ")}` : ""}
         </p>
         {c.note && <p className="mt-1 text-xs italic text-stone-400">“{c.note}”</p>}
         <div className="mt-2.5 flex items-center gap-2">
           <div className="flex items-center gap-1 rounded-full border border-stone-300 p-0.5 dark:border-white/15">
-            <button type="button" onClick={() => setQty(c.uid, c.qty - 1)} aria-label="Decrease quantity" className="grid h-7 w-7 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Minus size={12} weight="bold" /></button>
+            <button type="button" onClick={() => setQty(c.uid, c.qty - 1)} aria-label={t("common.decrease")} className="grid h-7 w-7 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Minus size={12} weight="bold" /></button>
             <span className="w-6 text-center text-xs font-bold tabular-nums text-stone-900 dark:text-white">{c.qty}</span>
-            <button type="button" onClick={() => setQty(c.uid, c.qty + 1)} aria-label="Increase quantity" className="grid h-7 w-7 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Plus size={12} weight="bold" /></button>
+            <button type="button" onClick={() => setQty(c.uid, c.qty + 1)} aria-label={t("common.increase")} className="grid h-7 w-7 place-items-center rounded-full hover:bg-stone-100 dark:hover:bg-white/10"><Plus size={12} weight="bold" /></button>
           </div>
           <button type="button" onClick={() => removeFromCart(c.uid)} className="flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold text-stone-400 transition-colors hover:text-red-600">
-            <Trash size={13} weight="bold" /> Remove
+            <Trash size={13} weight="bold" /> {t("cart.remove")}
           </button>
         </div>
       </div>
@@ -529,7 +538,7 @@ function CartTotals() {
   return (
     <dl className="space-y-2.5 text-sm">
       <div className="flex justify-between text-stone-600 dark:text-zinc-300">
-        <dt>Subtotal</dt>
+        <dt>{t("cart.subtotal")}</dt>
         <dd className="tabular-nums"><Price n={cartSubtotal} /></dd>
       </div>
       <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-extrabold text-stone-900 dark:border-white/10 dark:text-white">
@@ -606,7 +615,7 @@ export function CartPage() {
   const navigate = useNavigate();
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-      <SectionHead eyebrow={t("nav.menu")} title={t("cart.title")} sub="Adjust quantities before you check out." />
+      <SectionHead eyebrow={t("nav.menu")} title={t("cart.title")} sub={t("cart.adjust")} />
       {cart.length === 0 ? (
         <div className="grid place-items-center rounded-3xl border border-dashed border-stone-300 py-20 text-center dark:border-white/15">
           <ShoppingCart size={34} className="text-stone-300" />
@@ -618,7 +627,7 @@ export function CartPage() {
           <div className="space-y-3">
             {cart.map((c) => <CartLine key={c.uid} c={c} />)}
             <button type="button" onClick={() => setCartOpen(true)} className="text-sm font-bold text-orange-600">
-              Open quick cart →
+              {t("cart.openQuick")}
             </button>
           </div>
           <aside className="space-y-4 self-start rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
@@ -641,14 +650,14 @@ export function PolicyModal({
   tab: "delivery" | "returns" | "privacy" | "terms";
   onClose: () => void;
 }) {
-  const { cms } = useGursha();
+  const { cms, t } = useGursha();
   const [activeTab, setActiveTab] = useState<"delivery" | "returns" | "privacy" | "terms">(tab);
 
   const titles: Record<typeof activeTab, string> = {
-    delivery: "Delivery Information",
-    returns: "Returns & Cancellation",
-    privacy: "Privacy Policy",
-    terms: "Terms & Conditions",
+    delivery: t("footer.deliveryPolicy"),
+    returns: t("footer.returnsPolicy"),
+    privacy: t("footer.privacy"),
+    terms: t("footer.terms"),
   };
 
   const content: Record<typeof activeTab, string> = {
@@ -672,13 +681,13 @@ export function PolicyModal({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="w-full max-w-xl overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-900"
+        className="w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl dark:border-white/10 dark:bg-zinc-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between border-b border-stone-200 px-6 py-4 dark:border-white/10">
+        <header className="flex shrink-0 items-center justify-between border-b border-stone-200 px-4 sm:px-6 py-4 dark:border-white/10">
           <div className="flex items-center gap-2">
             <ShieldCheck size={20} weight="bold" className="text-orange-600" />
-            <h2 className="font-display text-lg font-extrabold text-stone-900 dark:text-white">
+            <h2 className="font-display text-base sm:text-lg font-extrabold text-stone-900 dark:text-white">
               {titles[activeTab]}
             </h2>
           </div>
@@ -691,24 +700,24 @@ export function PolicyModal({
           </button>
         </header>
 
-        <div className="flex border-b border-stone-200 px-6 pt-2 dark:border-white/10">
-          {(["delivery", "returns", "privacy", "terms"] as const).map((t) => (
+        <div className="flex shrink-0 border-b border-stone-200 px-4 sm:px-6 pt-2 overflow-x-auto gursha-scroll no-scrollbar whitespace-nowrap dark:border-white/10">
+          {(["delivery", "returns", "privacy", "terms"] as const).map((tTab) => (
             <button
-              key={t}
+              key={tTab}
               type="button"
-              onClick={() => setActiveTab(t)}
-              className={`border-b-2 px-3 py-2 text-xs font-bold capitalize transition ${
-                activeTab === t
+              onClick={() => setActiveTab(tTab)}
+              className={`border-b-2 px-3 py-2 text-xs font-bold capitalize transition shrink-0 ${
+                activeTab === tTab
                   ? "border-orange-600 text-orange-600"
                   : "border-transparent text-stone-400 hover:text-stone-700 dark:hover:text-zinc-200"
               }`}
             >
-              {t}
+              {titles[tTab]}
             </button>
           ))}
         </div>
 
-        <div className="p-6">
+        <div className="p-4 sm:p-6 overflow-y-auto gursha-scroll">
           <p className="text-sm leading-relaxed text-stone-600 dark:text-zinc-300">
             {content[activeTab]}
           </p>
@@ -718,7 +727,7 @@ export function PolicyModal({
               onClick={onClose}
               className="rounded-full bg-stone-900 px-5 py-2 text-xs font-bold text-white dark:bg-white dark:text-stone-900"
             >
-              Close
+              {t("common.close")}
             </button>
           </div>
         </div>

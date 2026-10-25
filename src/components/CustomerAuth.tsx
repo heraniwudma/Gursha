@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 /* ------------------------------------------------------------------ LOGIN */
 export function CustomerLogin() {
-  const { session, signInCustomer, resendVerification } = useGursha();
+  const { session, signInCustomer, resendVerification, t } = useGursha();
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -102,10 +102,10 @@ export function CustomerLogin() {
             <span className="font-display text-2xl font-extrabold text-orange-600">Gursha</span>
           </Link>
           <h1 className="font-display mt-2 text-2xl font-extrabold text-stone-900 dark:text-white">
-            Customer Sign In
+            {t("auth.signInTitle")}
           </h1>
           <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-            Sign in to view your orders, repeat meals, and manage your account.
+            {t("auth.signInSub")}
           </p>
         </div>
 
@@ -147,7 +147,7 @@ export function CustomerLogin() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Email Address
+              {t("auth.email")}
             </label>
             <div className="relative mt-1">
               <input
@@ -170,13 +170,13 @@ export function CustomerLogin() {
           <div>
             <div className="flex items-center justify-between">
               <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-                Password
+                {t("auth.password")}
               </label>
               <Link
                 to="/reset-password"
                 className="text-xs font-semibold text-orange-600 transition hover:underline"
               >
-                Forgot password?
+                {t("auth.forgotPassword")}
               </Link>
             </div>
             <div className="relative mt-1">
@@ -213,19 +213,19 @@ export function CustomerLogin() {
             {isSubmitting ? (
               <>
                 <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                <span>Signing in...</span>
+                <span>{t("auth.submitting")}</span>
               </>
             ) : (
-              <span>Sign In</span>
+              <span>{t("auth.signIn")}</span>
             )}
           </button>
         </form>
 
         <div className="mt-6 border-t border-stone-200 pt-5 text-center text-xs dark:border-white/10">
           <p className="text-stone-500 dark:text-zinc-400">
-            Don't have an account yet?{" "}
+            {t("auth.noAccount")}{" "}
             <Link to="/register" className="font-bold text-orange-600 hover:underline">
-              Create an account
+              {t("auth.register")}
             </Link>
           </p>
           <div className="mt-3">
@@ -233,7 +233,7 @@ export function CustomerLogin() {
               to="/menu"
               className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400 transition hover:text-stone-600 dark:hover:text-zinc-300"
             >
-              <ArrowLeft size={12} weight="bold" /> Or order as a guest without signing in
+              <ArrowLeft size={12} weight="bold" /> {t("auth.guestOrderPrompt")}
             </Link>
           </div>
         </div>
@@ -244,7 +244,7 @@ export function CustomerLogin() {
 
 /* ------------------------------------------------------------------ REGISTER */
 export function CustomerRegister() {
-  const { session, signUpCustomer, resendVerification } = useGursha();
+  const { session, signUpCustomer, resendVerification, t } = useGursha();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -339,21 +339,11 @@ export function CustomerRegister() {
             <EnvelopeSimple size={32} weight="bold" />
           </div>
           <h2 className="font-display mt-4 text-2xl font-extrabold text-stone-900 dark:text-white">
-            Verify Your Email
+            {t("auth.verifyEmailTitle")}
           </h2>
           <p className="mt-2 text-xs leading-relaxed text-stone-500 dark:text-zinc-400">
-            We sent a verification link to <strong className="text-stone-800 dark:text-zinc-200">{registeredEmail}</strong>.
-            Please open your email and click the confirmation link to complete your registration.
+            {t("auth.verifyEmailSub")}
           </p>
-
-          <div className="mt-6 rounded-2xl bg-stone-50 p-4 text-xs text-stone-600 dark:bg-white/5 dark:text-zinc-300">
-            <p className="font-bold flex items-center justify-center gap-1.5 text-stone-800 dark:text-zinc-100">
-              <Sparkle size={14} weight="bold" className="text-orange-600" /> Account Creation is Optional
-            </p>
-            <p className="mt-1 text-[11px] text-stone-400">
-              You can always continue ordering your favorite dishes without waiting for email verification.
-            </p>
-          </div>
 
           <div className="mt-6 space-y-3">
             <button
@@ -364,7 +354,7 @@ export function CustomerRegister() {
             >
               {resendCooldown > 0
                 ? `Resend verification in ${resendCooldown}s`
-                : "Resend verification email"}
+                : t("auth.resendVerification")}
             </button>
             {resendMsg && (
               <p className="text-xs font-semibold text-orange-600">{resendMsg}</p>
@@ -374,14 +364,14 @@ export function CustomerRegister() {
               to="/login"
               className="block w-full rounded-full bg-orange-600 py-3 text-xs font-bold text-white shadow-sm transition hover:bg-orange-500"
             >
-              Go to Sign In
+              {t("auth.signIn")}
             </Link>
 
             <Link
               to="/menu"
               className="inline-block text-xs font-semibold text-stone-400 hover:text-stone-600 dark:hover:text-zinc-200"
             >
-              Continue to Menu as Guest
+              {t("auth.continueGuest")}
             </Link>
           </div>
         </div>
@@ -397,10 +387,10 @@ export function CustomerRegister() {
             <span className="font-display text-2xl font-extrabold text-orange-600">Gursha</span>
           </Link>
           <h1 className="font-display mt-2 text-2xl font-extrabold text-stone-900 dark:text-white">
-            Create an Account
+            {t("auth.registerTitle")}
           </h1>
           <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-            Sign up to track orders, save meal preferences, and earn loyalty perks.
+            {t("auth.registerSub")}
           </p>
         </div>
 
@@ -418,7 +408,7 @@ export function CustomerRegister() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Full Name (Optional)
+              {t("auth.fullName")} {t("auth.optional")}
             </label>
             <div className="relative mt-1">
               <input
@@ -439,7 +429,7 @@ export function CustomerRegister() {
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Email Address
+              {t("auth.email")}
             </label>
             <div className="relative mt-1">
               <input
@@ -457,14 +447,11 @@ export function CustomerRegister() {
                 className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400"
               />
             </div>
-            <span className="mt-1 block text-[11px] text-stone-400">
-              A verification email will be sent to activate your account.
-            </span>
           </div>
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Phone Number (Optional)
+              {t("auth.phone")} {t("auth.optional")}
             </label>
             <div className="relative mt-1">
               <input
@@ -481,21 +468,18 @@ export function CustomerRegister() {
                 className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400"
               />
             </div>
-            <span className="mt-1 block text-[11px] text-stone-400">
-              Helps connect past guest delivery orders with your account.
-            </span>
           </div>
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Password
+              {t("auth.password")}
             </label>
             <div className="relative mt-1">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 6 characters"
+                placeholder="••••••••"
                 required
                 minLength={6}
                 autoComplete="new-password"
@@ -510,7 +494,7 @@ export function CustomerRegister() {
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
                 className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
-                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
               >
                 {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
               </button>
@@ -519,14 +503,14 @@ export function CustomerRegister() {
 
           <div>
             <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">
-              Confirm Password
+              {t("auth.confirmPassword")}
             </label>
             <div className="relative mt-1">
               <input
                 type={showPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Re-enter your password"
+                placeholder="••••••••"
                 required
                 minLength={6}
                 autoComplete="new-password"
@@ -548,19 +532,19 @@ export function CustomerRegister() {
             {isSubmitting ? (
               <>
                 <ArrowCounterClockwise size={16} weight="bold" className="animate-spin" />
-                <span>Creating Account...</span>
+                <span>{t("auth.submitting")}</span>
               </>
             ) : (
-              <span>Create Account</span>
+              <span>{t("auth.register")}</span>
             )}
           </button>
         </form>
 
         <div className="mt-6 border-t border-stone-200 pt-5 text-center text-xs dark:border-white/10">
           <p className="text-stone-500 dark:text-zinc-400">
-            Already have an account?{" "}
+            {t("auth.haveAccount")}{" "}
             <Link to="/login" className="font-bold text-orange-600 hover:underline">
-              Sign In
+              {t("auth.signIn")}
             </Link>
           </p>
           <div className="mt-3">
@@ -568,7 +552,7 @@ export function CustomerRegister() {
               to="/menu"
               className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400 transition hover:text-stone-600 dark:hover:text-zinc-300"
             >
-              <ArrowLeft size={12} weight="bold" /> Or order as a guest without an account
+              <ArrowLeft size={12} weight="bold" /> {t("auth.guestOrderPrompt")}
             </Link>
           </div>
         </div>
@@ -579,7 +563,7 @@ export function CustomerRegister() {
 
 /* ------------------------------------------------------------------ RESET PASSWORD */
 export function CustomerResetPassword() {
-  const { requestPasswordReset, verifyPasswordResetOtp, updatePassword } = useGursha();
+  const { requestPasswordReset, verifyPasswordResetOtp, updatePassword, t } = useGursha();
   const navigate = useNavigate();
 
   // 3-step state machine: "email" -> "otp" -> "password"
@@ -741,14 +725,14 @@ export function CustomerResetPassword() {
             <span className="font-display text-2xl font-extrabold text-orange-600">Gursha</span>
           </Link>
           <h1 className="font-display mt-2 text-2xl font-extrabold text-stone-900 dark:text-white">
-            {step === "email" && "Forgot Password"}
-            {step === "otp" && "Enter Recovery Code"}
-            {step === "password" && "Set New Password"}
+            {step === "email" && t("auth.resetPassword")}
+            {step === "otp" && t("auth.enterOtpTitle")}
+            {step === "password" && t("auth.setNewPasswordTitle")}
           </h1>
           <p className="mt-1 text-xs text-stone-500 dark:text-zinc-400">
-            {step === "email" && "Enter your registered email address to receive a 6-digit recovery code."}
-            {step === "otp" && `Enter the 6-digit recovery code sent to ${email}`}
-            {step === "password" && "Choose a secure new password for your Gursha Cafe account."}
+            {step === "email" && t("auth.resetSub")}
+            {step === "otp" && `${t("auth.enterOtpTitle")} (${email})`}
+            {step === "password" && t("auth.setNewPasswordTitle")}
           </p>
         </div>
 
@@ -983,7 +967,7 @@ export function CustomerResetPassword() {
 
         <div className="mt-6 border-t border-stone-200 pt-5 text-center text-xs dark:border-white/10">
           <Link to="/login" className="font-bold text-orange-600 hover:underline">
-            Back to Sign In
+            {t("auth.backToSignIn")}
           </Link>
         </div>
       </div>

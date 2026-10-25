@@ -568,12 +568,57 @@ export async function signInAdmin(rawEmail: string, rawPassword: string): Promis
 
     if (error) {
       console.warn("[Auth] Admin signInWithPassword failed:", error.message);
-      if (error.message?.toLowerCase().includes("invalid login credentials")) {
+      const msg = error.message?.toLowerCase() || "";
+
+      // 1. Invalid email or password (GoTrue 400)
+      if (
+        msg.includes("invalid login credentials") ||
+        msg.includes("invalid credentials") ||
+        msg.includes("invalid grant")
+      ) {
         return {
           success: false,
-          error: "Invalid administrator credentials. Access is restricted to authorized personnel.",
+          error: "Incorrect email or password. Please verify your administrator credentials.",
         };
       }
+
+      // 2. Email not confirmed
+      if (
+        msg.includes("email not confirmed") ||
+        msg.includes("email address is not verified") ||
+        (error as any).code === "email_not_confirmed"
+      ) {
+        return {
+          success: false,
+          error: "Your administrator email address has not been confirmed. Please check your inbox for verification.",
+        };
+      }
+
+      // 3. Rate limiting / too many attempts
+      if (
+        error.status === 429 ||
+        msg.includes("rate limit") ||
+        msg.includes("too many requests")
+      ) {
+        return {
+          success: false,
+          error: "Too many sign-in attempts. Please wait a few moments and try again.",
+        };
+      }
+
+      // 4. Network or connectivity errors
+      if (
+        msg.includes("fetch") ||
+        msg.includes("network") ||
+        msg.includes("timeout") ||
+        msg.includes("failed to fetch")
+      ) {
+        return {
+          success: false,
+          error: "Network error connecting to authentication service. Please check your connection.",
+        };
+      }
+
       return {
         success: false,
         error: error.message || "Failed to authenticate administrator.",
@@ -583,18 +628,29 @@ export async function signInAdmin(rawEmail: string, rawPassword: string): Promis
     if (!data?.user) {
       return {
         success: false,
-        error: "Authentication failed. No user profile returned.",
+        error: "Authentication succeeded but no user profile was returned.",
       };
     }
 
-    // STRICT ROLE CHECK: Verify that the authenticated user is an authorized admin
-    const isAdmin = await verifyCurrentUserIsAdmin(data.user);
+    // STRICT ROLE CHECK: Verify that the authenticated user is an authorized admin in public.admin_users
+    let isAdmin = false;
+    try {
+      isAdmin = await verifyCurrentUserIsAdmin(data.user);
+    } catch (checkErr: any) {
+      console.error("[Auth] Database error during admin authorization check:", checkErr);
+      await supabase.auth.signOut();
+      return {
+        success: false,
+        error: "Database error while verifying administrator authorization. Please try again.",
+      };
+    }
+
     if (!isAdmin) {
       // Immediately sign out to prevent unauthorized session persistence
       await supabase.auth.signOut();
       return {
         success: false,
-        error: "Access Denied: This account is not registered as an authorized administrator for Gursha Cafe.",
+        error: "Access Denied: Account authenticated successfully, but this account is not registered as an authorized administrator in public.admin_users.",
       };
     }
 

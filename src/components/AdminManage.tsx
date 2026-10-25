@@ -11,7 +11,8 @@ import {
 import { useGursha } from "../context/GurshaStore";
 import { Price } from "./CustomerViews";
 import { CATEGORIES, IMG, SEED_CMS } from "../data/mockData";
-import type { CategoryId, Cms, ExtraOption, MenuItem } from "../types";
+import type { CategoryId, Cms, ExtraOption, Lang, MenuItem } from "../types";
+import { getLocalizedDishName, getLocalizedDishDesc, getMissingDishTranslations } from "../lib/localize";
 
 const etb = (n: number) => `ETB ${n.toLocaleString()}`;
 const CARD = "rounded-3xl border border-stone-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-zinc-900";
@@ -234,11 +235,12 @@ function DishImageUploadControl({
 export function AdminMenu() {
   const { menu, t, saveMenuItem, deleteMenuItem, toggleStock } = useGursha();
   const [draft, setDraft] = useState<MenuItem>({
-    id: "", name: "", nameAm: "", nameSid: "", desc: "", price: 0, category: "mains",
+    id: "", name: "", nameAm: "", nameSid: "", desc: "", descAm: "", descSid: "", price: 0, category: "mains",
     image: "", spice: 1, rating: 5, popular: false, fasting: false, inStock: true,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [formLang, setFormLang] = useState<Lang>("en");
 
   const grouped = useMemo(() => CATEGORIES.map((c) => ({
     c, items: menu.filter((i) => i.category === c.id),
@@ -247,22 +249,30 @@ export function AdminMenu() {
   const startAdd = () => {
     setEditingId(null);
     setDraft({
-      id: "", name: "", nameAm: "", nameSid: "", desc: "", price: 0, category: "mains",
+      id: "", name: "", nameAm: "", nameSid: "", desc: "", descAm: "", descSid: "", price: 0, category: "mains",
       image: "", spice: 1, rating: 5, popular: false, fasting: false, inStock: true,
     });
+    setFormLang("en");
     setShowForm(true);
   };
 
   const startEdit = (item: MenuItem) => {
     setEditingId(item.id);
-    setDraft({ ...item });
+    setDraft({
+      ...item,
+      nameAm: item.nameAm ?? "",
+      nameSid: item.nameSid ?? "",
+      descAm: item.descAm ?? "",
+      descSid: item.descSid ?? "",
+    });
+    setFormLang("en");
     setShowForm(true);
   };
 
   const cancelForm = () => {
     setEditingId(null);
     setDraft({
-      id: "", name: "", nameAm: "", nameSid: "", desc: "", price: 0, category: "mains",
+      id: "", name: "", nameAm: "", nameSid: "", desc: "", descAm: "", descSid: "", price: 0, category: "mains",
       image: "", spice: 1, rating: 5, popular: false, fasting: false, inStock: true,
     });
     setShowForm(false);
@@ -270,7 +280,7 @@ export function AdminMenu() {
 
   const submit = () => {
     if (!draft.name.trim()) {
-      toast.error("Please enter a dish name.");
+      toast.error("Please enter an English dish name.");
       return;
     }
     if (draft.price <= 0) {
@@ -281,10 +291,13 @@ export function AdminMenu() {
     saveMenuItem({
       ...draft,
       id: draft.id || `m-${Date.now()}`,
-      nameAm: draft.nameAm || draft.name,
-      nameSid: draft.nameSid || draft.name,
-      image: draft.image || menu[0]?.image || "",
+      name: draft.name.trim(),
+      nameAm: (draft.nameAm || "").trim(),
+      nameSid: (draft.nameSid || "").trim(),
       desc: (draft.desc || "").trim(),
+      descAm: (draft.descAm || "").trim(),
+      descSid: (draft.descSid || "").trim(),
+      image: draft.image || menu[0]?.image || "",
     });
 
     cancelForm();
@@ -292,15 +305,15 @@ export function AdminMenu() {
 
   return (
     <div className="space-y-5">
-      <Head title="Menu manager" sub="Prices, availability and dietary flags update the customer menu the moment you change them." />
+      <Head title={t("admin.menuManager")} sub={t("admin.menuSub")} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className={`${LABEL}`}>{menu.length} dishes · {menu.filter((i) => !i.inStock).length} out of stock</p>
+        <p className={`${LABEL}`}>{menu.length} {t("admin.dishes")} · {menu.filter((i) => !i.inStock).length} {t("admin.outOfStockCount")}</p>
         <button
           type="button"
           onClick={showForm ? cancelForm : startAdd}
           className="flex items-center gap-2 rounded-full bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-500"
         >
-          {showForm ? <X size={16} weight="bold" /> : <Plus size={16} weight="bold" />} {showForm ? "Close form" : "Add dish"}
+          {showForm ? <X size={16} weight="bold" /> : <Plus size={16} weight="bold" />} {showForm ? t("admin.closeForm") : t("admin.addDish")}
         </button>
       </div>
 
@@ -309,10 +322,10 @@ export function AdminMenu() {
           <div className="flex items-center justify-between border-b border-stone-200 pb-3 dark:border-white/10">
             <div>
               <h2 className="font-display text-base font-extrabold text-stone-900 dark:text-white">
-                {editingId ? `Edit Dish: ${draft.name || "Untitled"}` : "Add New Dish"}
+                {editingId ? `${t("admin.editDish")}: ${draft.name || "Untitled"}` : t("admin.addNewDish")}
               </h2>
               <p className="text-xs text-stone-500 dark:text-zinc-400">
-                {editingId ? "Update details or replace the dish picture." : "Fill in dish information and upload a photo directly from your computer."}
+                {t("admin.dishInfoHelp")}
               </p>
             </div>
             {editingId && (
@@ -322,18 +335,10 @@ export function AdminMenu() {
             )}
           </div>
 
+          {/* Core Price & Category */}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={LABEL}>Dish Name</label>
-              <input
-                className={`${INPUT} mt-1`}
-                placeholder="e.g. Special Kitfo Plate"
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className={LABEL}>Price (ETB)</label>
+              <label className={LABEL}>{t("admin.priceEtb")}</label>
               <input
                 className={`${INPUT} mt-1`}
                 type="number"
@@ -344,7 +349,7 @@ export function AdminMenu() {
               />
             </div>
             <div>
-              <label className={LABEL}>Category</label>
+              <label className={LABEL}>{t("admin.category")}</label>
               <select
                 className={`${INPUT} mt-1`}
                 value={draft.category}
@@ -353,14 +358,164 @@ export function AdminMenu() {
                 {CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.en}</option>)}
               </select>
             </div>
-            <div>
-              <label className={LABEL}>Short Description (Optional)</label>
-              <input
-                className={`${INPUT} mt-1`}
-                placeholder="e.g. Freshly seasoned minced lean beef..."
-                value={draft.desc}
-                onChange={(e) => setDraft({ ...draft, desc: e.target.value })}
-              />
+          </div>
+
+          {/* Multilingual Name & Description Tabs */}
+          <div className="rounded-2xl border border-stone-200 bg-stone-50/70 p-4 dark:border-white/10 dark:bg-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-200 pb-3 dark:border-white/10">
+              <span className="text-xs font-bold uppercase tracking-wider text-stone-500 dark:text-zinc-400">
+                Multilingual Names & Descriptions
+              </span>
+              <div className="flex gap-1.5">
+                {[
+                  {
+                    id: "en" as Lang,
+                    label: t("admin.langEnglish"),
+                    hasValues: Boolean(draft.name?.trim() && draft.desc?.trim()),
+                  },
+                  {
+                    id: "am" as Lang,
+                    label: t("admin.langAmharic"),
+                    hasValues: Boolean(draft.nameAm?.trim() && draft.descAm?.trim()),
+                  },
+                  {
+                    id: "sid" as Lang,
+                    label: t("admin.langSidama"),
+                    hasValues: Boolean(draft.nameSid?.trim() && draft.descSid?.trim()),
+                  },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setFormLang(tab.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      formLang === tab.id
+                        ? "bg-orange-600 text-white shadow-sm"
+                        : "border border-stone-300 bg-white text-stone-700 hover:bg-stone-100 dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        tab.hasValues
+                          ? formLang === tab.id
+                            ? "bg-white"
+                            : "bg-emerald-500"
+                          : formLang === tab.id
+                          ? "bg-white/60"
+                          : "bg-amber-400"
+                      }`}
+                      title={tab.hasValues ? "Both name & description present" : "Missing translation values"}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* English Fields */}
+            {formLang === "en" && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className={LABEL}>Food name (English) *</label>
+                  <input
+                    className={`${INPUT} mt-1`}
+                    placeholder="e.g. Special Kitfo Plate"
+                    value={draft.name}
+                    onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>Food description (English)</label>
+                  <textarea
+                    rows={2}
+                    className={`${TEXTAREA} mt-1`}
+                    placeholder="e.g. Freshly seasoned minced lean beef with spiced clarified butter and mitmita..."
+                    value={draft.desc}
+                    onChange={(e) => setDraft({ ...draft, desc: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Amharic Fields */}
+            {formLang === "am" && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className={LABEL}>የምግብ ስም (Amharic Name)</label>
+                  <input
+                    className={`${INPUT} mt-1`}
+                    placeholder="ለምሳሌ፡ ልዩ ክትፎ"
+                    value={draft.nameAm ?? ""}
+                    onChange={(e) => setDraft({ ...draft, nameAm: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>የምግብ መግለጫ (Amharic Description)</label>
+                  <textarea
+                    rows={2}
+                    className={`${TEXTAREA} mt-1`}
+                    placeholder="ለምሳሌ፡ በቅቤ እና ሚጥሚጣ የተዘጋጀ ለስላሳ እና ጣፋጭ የክትፎ ምግብ..."
+                    value={draft.descAm ?? ""}
+                    onChange={(e) => setDraft({ ...draft, descAm: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Sidama Fields */}
+            {formLang === "sid" && (
+              <div className="mt-3 space-y-3">
+                <div>
+                  <label className={LABEL}>Xaado Su'ma (Sidama Name)</label>
+                  <input
+                    className={`${INPUT} mt-1`}
+                    placeholder="W.m. Baxxino Kitfo Sagale"
+                    value={draft.nameSid ?? ""}
+                    onChange={(e) => setDraft({ ...draft, nameSid: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>Xaado Xawishsha (Sidama Description)</label>
+                  <textarea
+                    rows={2}
+                    className={`${TEXTAREA} mt-1`}
+                    placeholder="W.m. Mi'mitaanna bururi ledo kakkaysamino baxxino maala..."
+                    value={draft.descSid ?? ""}
+                    onChange={(e) => setDraft({ ...draft, descSid: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Live Preview Card */}
+          <div className="rounded-2xl border border-stone-200 bg-white p-3.5 shadow-sm dark:border-white/10 dark:bg-zinc-800">
+            <div className="flex items-center justify-between text-xs font-bold text-stone-500 dark:text-zinc-400">
+              <span className="flex items-center gap-1.5">
+                <Eye size={14} weight="bold" className="text-orange-600" />
+                {t("admin.previewDish")}: {formLang === "en" ? "English" : formLang === "am" ? "አማርኛ" : "Sidaamu Afoo"}
+              </span>
+              <span className="text-[11px] font-semibold text-stone-400">Customer View</span>
+            </div>
+            <div className="mt-2.5 flex items-start gap-3">
+              {draft.image ? (
+                <img src={draft.image} alt={draft.name || "Preview"} className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+              ) : (
+                <div className="grid h-16 w-16 shrink-0 place-items-center rounded-xl bg-stone-100 text-stone-400 dark:bg-white/5">
+                  <ForkKnife size={24} />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="font-display truncate text-sm font-extrabold text-stone-900 dark:text-white">
+                  {getLocalizedDishName(draft, formLang) || "Dish Name"}
+                </p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-stone-500 dark:text-zinc-400">
+                  {getLocalizedDishDesc(draft, formLang) || "Dish description will appear here..."}
+                </p>
+                <p className="mt-1 text-xs font-bold text-orange-600">
+                  ETB {draft.price || 0}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -372,12 +527,12 @@ export function AdminMenu() {
           />
 
           <div>
-            <span className={LABEL}>Dietary & Menu Flags</span>
+            <span className={LABEL}>{t("admin.flags")}</span>
             <div className="mt-1.5 flex flex-wrap gap-2">
               {[
-                { k: "inStock" as const, label: "In stock" },
-                { k: "fasting" as const, label: "Fasting" },
-                { k: "popular" as const, label: "Popular" },
+                { k: "inStock" as const, label: t("admin.inStock") },
+                { k: "fasting" as const, label: t("admin.fasting") },
+                { k: "popular" as const, label: t("admin.popular") },
               ].map(({ k, label }) => (
                 <button
                   key={k}
@@ -401,14 +556,14 @@ export function AdminMenu() {
               onClick={cancelForm}
               className="rounded-full border border-stone-300 px-5 py-2.5 text-xs font-bold text-stone-600 transition hover:bg-stone-50 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/5"
             >
-              Cancel
+              {t("admin.cancel")}
             </button>
             <button
               type="button"
               onClick={submit}
               className="rounded-full bg-stone-900 px-6 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-stone-800 dark:bg-white dark:text-stone-900 dark:hover:bg-zinc-200"
             >
-              {editingId ? "Update dish" : "Save dish to menu"}
+              {editingId ? t("admin.updateDish") : t("admin.saveDish")}
             </button>
           </div>
         </section>
@@ -418,59 +573,83 @@ export function AdminMenu() {
         <section key={c.id} className="space-y-2">
           <h2 className={`font-display px-1 text-sm font-extrabold text-stone-900 dark:text-white`}>{c.en} <span className="text-stone-400">· {items.length}</span></h2>
           <div className="grid gap-3 xl:grid-cols-2">
-            {items.map((item) => (
-              <article key={item.id} className={`${CARD} flex gap-4 p-4`}>
-                <img src={item.image} alt={item.name} className="h-20 w-20 shrink-0 rounded-2xl object-cover" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-stone-900 dark:text-white">{item.name}</p>
-                      {item.desc?.trim() ? <p className="truncate text-xs text-stone-400">{item.desc}</p> : null}
+            {items.map((item) => {
+              const { isComplete, missingLabels } = getMissingDishTranslations(item);
+              return (
+                <article key={item.id} className={`${CARD} flex gap-4 p-4`}>
+                  <img src={item.image} alt={item.name} className="h-20 w-20 shrink-0 rounded-2xl object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-stone-900 dark:text-white">
+                          {item.name}
+                          {item.nameAm && item.nameAm !== item.name && (
+                            <span className="ml-1.5 text-xs font-normal text-stone-400 dark:text-zinc-500">
+                              · {item.nameAm}
+                            </span>
+                          )}
+                        </p>
+                        {item.desc?.trim() ? <p className="truncate text-xs text-stone-400">{item.desc}</p> : null}
+                        <div className="mt-1 flex items-center gap-1.5">
+                          {isComplete ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <CheckCircle size={11} weight="bold" /> {t("admin.allTranslated")}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                              title={missingLabels.join(", ")}
+                            >
+                              <WarningCircle size={11} weight="bold" /> {missingLabels.length} {t("admin.missingTranslations")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          aria-label="Edit dish"
+                          title="Edit dish translations and picture"
+                          onClick={() => startEdit(item)}
+                          className="grid h-8 w-8 place-items-center rounded-full border border-stone-300 text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
+                        >
+                          <PencilSimple size={14} weight="bold" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Delete dish"
+                          title="Delete dish"
+                          onClick={() => deleteMenuItem(item.id)}
+                          className="grid h-8 w-8 place-items-center rounded-full border border-stone-300 text-red-600 transition hover:bg-red-50 dark:border-white/15 dark:hover:bg-red-950/40"
+                        >
+                          <Trash size={14} weight="bold" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        aria-label="Edit dish"
-                        title="Edit dish and picture"
-                        onClick={() => startEdit(item)}
-                        className="grid h-8 w-8 place-items-center rounded-full border border-stone-300 text-stone-600 transition hover:bg-stone-100 hover:text-stone-900 dark:border-white/15 dark:text-zinc-300 dark:hover:bg-white/10 dark:hover:text-white"
-                      >
-                        <PencilSimple size={14} weight="bold" />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="flex items-center gap-1.5 rounded-xl border border-stone-300 px-2.5 py-1.5 dark:border-white/15">
+                        <span className="text-xs font-bold text-stone-400">ETB</span>
+                        <input type="number" min={0} defaultValue={item.price} onBlur={(e) => saveMenuItem({ ...item, price: Number(e.target.value) })}
+                          className="w-16 bg-transparent text-sm font-bold tabular-nums outline-none dark:text-zinc-100" />
+                        <PencilSimple size={13} className="text-stone-400" />
+                      </label>
+                      <button type="button" onClick={() => toggleStock(item.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold ${item.inStock ? "bg-emerald-500/12 text-emerald-600" : "bg-red-500/12 text-red-600"}`}>
+                        {item.inStock ? t("admin.inStock") : "Sold out"}
                       </button>
-                      <button
-                        type="button"
-                        aria-label="Delete dish"
-                        title="Delete dish"
-                        onClick={() => deleteMenuItem(item.id)}
-                        className="grid h-8 w-8 place-items-center rounded-full border border-stone-300 text-red-600 transition hover:bg-red-50 dark:border-white/15 dark:hover:bg-red-950/40"
-                      >
-                        <Trash size={14} weight="bold" />
+                      <button type="button" onClick={() => saveMenuItem({ ...item, popular: !item.popular })}
+                        className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${item.popular ? "bg-orange-600/12 text-orange-700 dark:text-orange-300" : "border border-stone-300 text-stone-500 dark:border-white/15 dark:text-zinc-400"}`}>
+                        <Star size={12} weight={item.popular ? "fill" : "regular"} /> {t("admin.popular")}
+                      </button>
+                      <button type="button" onClick={() => saveMenuItem({ ...item, fasting: !item.fasting })}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold ${item.fasting ? "bg-orange-600/12 text-orange-700 dark:text-orange-300" : "border border-stone-300 text-stone-500 dark:border-white/15 dark:text-zinc-400"}`}>
+                        {t("admin.fasting")}
                       </button>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <label className="flex items-center gap-1.5 rounded-xl border border-stone-300 px-2.5 py-1.5 dark:border-white/15">
-                      <span className="text-xs font-bold text-stone-400">ETB</span>
-                      <input type="number" min={0} defaultValue={item.price} onBlur={(e) => saveMenuItem({ ...item, price: Number(e.target.value) })}
-                        className="w-16 bg-transparent text-sm font-bold tabular-nums outline-none dark:text-zinc-100" />
-                      <PencilSimple size={13} className="text-stone-400" />
-                    </label>
-                    <button type="button" onClick={() => toggleStock(item.id)}
-                      className={`rounded-full px-3 py-1.5 text-xs font-bold ${item.inStock ? "bg-emerald-500/12 text-emerald-600" : "bg-red-500/12 text-red-600"}`}>
-                      {item.inStock ? "In stock" : "Sold out"}
-                    </button>
-                    <button type="button" onClick={() => saveMenuItem({ ...item, popular: !item.popular })}
-                      className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold ${item.popular ? "bg-orange-600/12 text-orange-700 dark:text-orange-300" : "border border-stone-300 text-stone-500 dark:border-white/15 dark:text-zinc-400"}`}>
-                      <Star size={12} weight={item.popular ? "fill" : "regular"} /> Popular
-                    </button>
-                    <button type="button" onClick={() => saveMenuItem({ ...item, fasting: !item.fasting })}
-                      className={`rounded-full px-3 py-1.5 text-xs font-bold ${item.fasting ? "bg-orange-600/12 text-orange-700 dark:text-orange-300" : "border border-stone-300 text-stone-500 dark:border-white/15 dark:text-zinc-400"}`}>
-                      Fasting
-                    </button>
-                  </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         </section>
       ))}

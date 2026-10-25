@@ -240,6 +240,11 @@ export interface Database {
           name_am: string | null
           name_sid: string | null
           description: string | null
+          desc: string | null
+          description_am: string | null
+          desc_am: string | null
+          description_sid: string | null
+          desc_sid: string | null
           price: number
           category: string
           image: string | null
@@ -256,6 +261,11 @@ export interface Database {
           name_am?: string | null
           name_sid?: string | null
           description?: string | null
+          desc?: string | null
+          description_am?: string | null
+          desc_am?: string | null
+          description_sid?: string | null
+          desc_sid?: string | null
           price: number
           category: string
           image?: string | null
@@ -272,6 +282,11 @@ export interface Database {
           name_am?: string | null
           name_sid?: string | null
           description?: string | null
+          desc?: string | null
+          description_am?: string | null
+          desc_am?: string | null
+          description_sid?: string | null
+          desc_sid?: string | null
           price?: number
           category?: string
           image?: string | null

@@ -14,6 +14,7 @@ import type { PaymentMethod, ServiceType } from "../types";
 import { normalizePhoneNumber, validatePhoneNumber, formatPhoneDisplay } from "../lib/phone";
 import { validateEmail } from "../lib/auth";
 import { ProofImagePreview } from "./ProofImagePreview";
+import { getLocalizedDishName } from "../lib/localize";
 
 const money = (n: number) => `ETB ${n.toLocaleString()}`;
 const fmt = (ts: number) => new Date(ts).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -75,7 +76,7 @@ const scheduleLabel = (ts: number | null) =>
 
 /* ------------------------------------------------------------------ checkout */
 export function CheckoutPage() {
-  const { t, cart, cartSubtotal, placeOrder, session } = useGursha();
+  const { t, lang, menu, cart, cartSubtotal, placeOrder, session } = useGursha();
   const navigate = useNavigate();
 
   const [name, setName] = useState(session?.name ?? "");
@@ -124,10 +125,10 @@ export function CheckoutPage() {
   const submit = async () => {
     if (submitting) return;
     const next: string[] = [];
-    if (!name.trim()) next.push("Enter the name for this order.");
-    if (phone.trim().length < 9) next.push("Enter a valid Ethiopian phone number.");
-    if (payment !== "cash" && !proofImage) next.push("Attach your payment screenshot so we can verify it.");
-    if (cart.length === 0) next.push("Your cart is empty.");
+    if (!name.trim()) next.push(t("checkout.errName"));
+    if (phone.trim().length < 9) next.push(t("checkout.errPhone"));
+    if (payment !== "cash" && !proofImage) next.push(t("checkout.errProof"));
+    if (cart.length === 0) next.push(t("checkout.errCartEmpty"));
     setErrors(next);
     if (next.length) return;
 
@@ -152,26 +153,26 @@ export function CheckoutPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-      <SectionHead eyebrow={t("nav.orders")} title={t("checkout.title")} sub="Direct kitchen ordering — your order is sent to the Gursha team immediately." />
+      <SectionHead eyebrow={t("nav.orders")} title={t("checkout.title")} sub={t("checkout.sub")} />
       <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <div className="space-y-5">
           <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">1 · Who is ordering</h3>
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">{t("checkout.stepWho")}</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("checkout.fullName")}
                 className="rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
-              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+251 9xx xx xx xx" inputMode="tel"
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("checkout.phonePlaceholder")} inputMode="tel"
                 className="rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
             </div>
           </section>
 
           <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">2 · When</h3>
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">{t("checkout.stepWhen")}</h3>
             <div className="flex flex-wrap items-center gap-2">
               {(["now", "later"] as const).map((w) => (
                 <button key={w} type="button" onClick={() => setWhen(w)}
                   className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${when === w ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900" : "border border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
-                  {w === "now" ? "As soon as possible" : "Schedule"}
+                  {w === "now" ? t("checkout.asap") : t("checkout.schedule")}
                 </button>
               ))}
               {when === "later" && (
@@ -182,31 +183,15 @@ export function CheckoutPage() {
           </section>
 
           <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">3 · Payment</h3>
-            <div className="flex flex-wrap items-center gap-2">
-              {(["now", "later"] as const).map((w) => (
-                <button key={w} type="button" onClick={() => setWhen(w)}
-                  className={`rounded-full px-4 py-2 text-sm font-bold transition-colors ${when === w ? "bg-stone-900 text-white dark:bg-white dark:text-stone-900" : "border border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
-                  {w === "now" ? "As soon as possible" : "Schedule"}
-                </button>
-              ))}
-              {when === "later" && (
-                <input type="time" value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)}
-                  className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
-            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">3 · Payment</h3>
+            <h3 className="font-display mb-4 text-base font-bold text-stone-900 dark:text-white">{t("checkout.stepPayment")}</h3>
             <div className="grid gap-2 sm:grid-cols-3">
               {(Object.keys(PAY_META) as PaymentMethod[]).map((p) => {
-                const { Icon, title } = PAY_META[p];
+                const { Icon } = PAY_META[p];
                 return (
                   <button key={p} type="button" onClick={() => setPayment(p)}
                     className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-3 text-left text-sm font-bold transition-colors ${payment === p ? "border-orange-600 bg-orange-600/10 text-orange-700 dark:text-orange-300" : "border-stone-300 text-stone-600 dark:border-white/15 dark:text-zinc-300"}`}>
                     <Icon size={18} weight="bold" />
-                    {title}
+                    {t(`pay.${p}`)}
                   </button>
                 );
               })}
@@ -214,7 +199,7 @@ export function CheckoutPage() {
 
             <p className="mt-3 flex items-start gap-2 rounded-xl bg-stone-100 p-3 text-xs leading-relaxed text-stone-600 dark:bg-white/5 dark:text-zinc-300">
               <Info size={15} weight="bold" className="mt-0.5 shrink-0 text-orange-600" />
-              {PAY_META[payment].hint}
+              {t(`pay.${payment}Hint`)}
             </p>
 
             {payment !== "cash" && (
@@ -226,12 +211,12 @@ export function CheckoutPage() {
                   ) : (
                     <>
                       <UploadSimple size={24} weight="bold" className="text-orange-600" />
-                      <span className="text-sm font-bold text-stone-700 dark:text-zinc-200">Attach your payment screenshot</span>
-                      <span className="text-xs text-stone-500 dark:text-zinc-400">PNG or JPG · stored on this device only</span>
+                      <span className="text-sm font-bold text-stone-700 dark:text-zinc-200">{t("checkout.attachProof")}</span>
+                      <span className="text-xs text-stone-500 dark:text-zinc-400">{t("checkout.proofHint")}</span>
                     </>
                   )}
                 </label>
-                <input value={proofNote} onChange={(e) => setProofNote(e.target.value)} placeholder="Transaction reference (e.g. TB-8891234)"
+                <input value={proofNote} onChange={(e) => setProofNote(e.target.value)} placeholder={t("checkout.txRefPlaceholder")}
                   className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-orange-500 dark:border-white/15 dark:bg-white/5 dark:text-zinc-100" />
               </div>
             )}
@@ -241,18 +226,23 @@ export function CheckoutPage() {
         <aside className="space-y-4 self-start rounded-3xl border border-stone-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900">
           <h3 className="font-display text-base font-bold text-stone-900 dark:text-white">{t("checkout.summary")}</h3>
           <ul className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
-            {cart.map((c) => (
-              <li key={c.uid} className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-stone-700 dark:text-zinc-200">
-                  <span className="font-bold tabular-nums">{c.qty}×</span> {c.name}
-                  <span className="block text-xs text-stone-400">{c.base}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
-                </span>
-                <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
-              </li>
-            ))}
+            {cart.map((c) => {
+              const menuItem = menu.find((m) => m.id === c.itemId);
+              const displayName = menuItem ? getLocalizedDishName(menuItem, lang) : c.name;
+              const baseLabel = c.base === "Bread" ? t("base.kita") : c.base === "None" ? t("base.none") : t("base.injera");
+              return (
+                <li key={c.uid} className="flex items-start justify-between gap-3 text-sm">
+                  <span className="text-stone-700 dark:text-zinc-200">
+                    <span className="font-bold tabular-nums">{c.qty}×</span> {displayName}
+                    <span className="block text-xs text-stone-400">{baseLabel}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
+                  </span>
+                  <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
+                </li>
+              );
+            })}
           </ul>
           <dl className="space-y-2 border-t border-stone-200 pt-4 text-sm dark:border-white/10">
-            <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Subtotal</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
+            <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>{t("cart.subtotal")}</dt><dd className="tabular-nums">{money(subtotal)}</dd></div>
             <div className="flex justify-between border-t border-stone-200 pt-3 text-lg font-extrabold text-stone-900 dark:border-white/10 dark:text-white">
               <dt>{t("checkout.total")}</dt><dd className="tabular-nums text-orange-600">{money(total)}</dd>
             </div>
@@ -273,7 +263,7 @@ export function CheckoutPage() {
             {submitting ? (
               <>
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                <span>Placing order...</span>
+                <span>{t("checkout.placing")}</span>
               </>
             ) : (
               <>
@@ -282,7 +272,7 @@ export function CheckoutPage() {
               </>
             )}
           </button>
-          <p className="text-center text-xs text-stone-400">Direct payment verification with live kitchen preparation updates.</p>
+          <p className="text-center text-xs text-stone-400">{t("checkout.directNotice")}</p>
         </aside>
       </div>
     </div>
@@ -376,7 +366,7 @@ export function OrdersPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
-      <SectionHead eyebrow="Live tracking" title={t("orders.title")} sub="Track your active orders and meal status in real time."
+      <SectionHead eyebrow={t("orders.liveTracking")} title={t("orders.title")} sub={t("orders.sub")}
         right={
           <div className="flex items-center gap-2">
             {session?.verified && (
@@ -385,7 +375,7 @@ export function OrdersPage() {
                 onClick={() => setShowClaimModal(true)}
                 className="rounded-full border border-stone-300 px-3.5 py-2 text-xs font-bold text-stone-700 transition hover:border-orange-500 hover:text-orange-600 dark:border-white/15 dark:text-zinc-200"
               >
-                + Link guest order
+                {t("orders.linkGuest")}
               </button>
             )}
             <button type="button" onClick={() => setCartOpen(true)} className="rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 dark:border-white/15 dark:text-zinc-200">{t("cart.title")}</button>
@@ -423,7 +413,7 @@ export function OrdersPage() {
           <div className="absolute inset-0 bg-stone-950/70 backdrop-blur-sm" onClick={() => setShowClaimModal(false)} />
           <div className="relative w-full max-w-md rounded-3xl border border-stone-200 bg-white p-6 shadow-2xl dark:border-white/10 dark:bg-zinc-900">
             <div className="flex items-center justify-between border-b border-stone-200 pb-3 dark:border-white/10">
-              <h3 className="font-display text-base font-bold text-stone-900 dark:text-white">Link Past Guest Order</h3>
+              <h3 className="font-display text-base font-bold text-stone-900 dark:text-white">{t("orders.linkGuestTitle")}</h3>
               <button type="button" onClick={() => setShowClaimModal(false)} className="rounded-full p-1 text-stone-400 hover:text-stone-700 dark:hover:text-white">
                 <X size={16} weight="bold" />
               </button>
@@ -433,7 +423,7 @@ export function OrdersPage() {
                 Enter your order code and the secret tracking token from your order confirmation to add it to your account.
               </p>
               <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">Order Code</label>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-400">{t("orders.orderCode")}</label>
                 <input
                   value={claimCode}
                   onChange={(e) => setClaimCode(e.target.value.toUpperCase())}
@@ -511,7 +501,7 @@ export function OrdersPage() {
 }
 
 export function OrderDetailPage() {
-  const { t, orders, setStatus, submitProof, fetchOrderDetails } = useGursha();
+  const { t, lang, menu, orders, setStatus, submitProof, fetchOrderDetails } = useGursha();
   const { code = "" } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(!orders.some((o) => o.code === code));
@@ -689,37 +679,42 @@ export function OrderDetailPage() {
         )}
 
         <ul className="divide-y divide-stone-200 dark:divide-white/10">
-          {order.items.map((c) => (
-            <li key={c.uid} className="flex items-start justify-between gap-4 py-3 text-sm">
-              <span className="text-stone-700 dark:text-zinc-200">
-                <span className="font-bold tabular-nums">{c.qty}×</span> {c.name}
-                <span className="block text-xs text-stone-400">{c.base}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
-              </span>
-              <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
-            </li>
-          ))}
+          {order.items.map((c) => {
+            const menuItem = menu.find((m) => m.id === c.itemId);
+            const displayName = menuItem ? getLocalizedDishName(menuItem, lang) : c.name;
+            const baseLabel = c.base === "Bread" ? t("base.kita") : c.base === "None" ? t("base.none") : t("base.injera");
+            return (
+              <li key={c.uid} className="flex items-start justify-between gap-4 py-3 text-sm">
+                <span className="text-stone-700 dark:text-zinc-200">
+                  <span className="font-bold tabular-nums">{c.qty}×</span> {displayName}
+                  <span className="block text-xs text-stone-400">{baseLabel}{c.extras.length ? ` · ${c.extras.join(", ")}` : ""}</span>
+                </span>
+                <Price n={(c.basePrice + c.extraPrice) * c.qty} className="shrink-0 font-bold text-stone-900 dark:text-white" />
+              </li>
+            );
+          })}
         </ul>
 
         <dl className="mt-4 space-y-2 border-t border-stone-200 pt-4 text-sm dark:border-white/10">
-          <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Subtotal</dt><dd className="tabular-nums">{money(order.subtotal)}</dd></div>
-          {order.deliveryFee > 0 && <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Delivery</dt><dd className="tabular-nums">{money(order.deliveryFee)}</dd></div>}
+          <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>{t("cart.subtotal")}</dt><dd className="tabular-nums">{money(order.subtotal)}</dd></div>
+          {order.deliveryFee > 0 && <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>{t("checkout.deliveryFee")}</dt><dd className="tabular-nums">{money(order.deliveryFee)}</dd></div>}
           {order.serviceCharge > 0 && <div className="flex justify-between text-stone-600 dark:text-zinc-300"><dt>Service (5%)</dt><dd className="tabular-nums">{money(order.serviceCharge)}</dd></div>}
-          <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-extrabold text-stone-900 dark:border-white/10 dark:text-white"><dt>Total</dt><dd className="tabular-nums">{money(order.total)}</dd></div>
+          <div className="flex justify-between border-t border-stone-200 pt-3 text-base font-extrabold text-stone-900 dark:border-white/10 dark:text-white"><dt>{t("checkout.total")}</dt><dd className="tabular-nums">{money(order.total)}</dd></div>
         </dl>
 
         <div className="mt-5 grid gap-3 border-t border-stone-200 pt-5 text-xs dark:border-white/10 sm:grid-cols-3">
           <div className="rounded-xl bg-stone-100 p-3 dark:bg-white/5">
-            <p className="font-bold uppercase tracking-widest text-stone-400">Payment</p>
-            <p className="mt-1 font-semibold text-stone-700 dark:text-zinc-200">{order.payment === "cash" ? "Cash" : order.payment === "telebirr" ? "telebirr" : "CBE transfer"}</p>
+            <p className="font-bold uppercase tracking-widest text-stone-400">{t("orders.contact")}</p>
+            <p className="mt-1 font-semibold text-stone-700 dark:text-zinc-200">{t(`pay.${order.payment}`)}</p>
           </div>
           <div className="rounded-xl bg-stone-100 p-3 dark:bg-white/5">
             <p className="font-bold uppercase tracking-widest text-stone-400">ETA</p>
             <p className="mt-1 font-semibold text-stone-700 dark:text-zinc-200">{order.eta} minutes · {scheduleLabel(order.scheduledFor)}</p>
           </div>
           <div className="rounded-xl bg-stone-100 p-3 dark:bg-white/5">
-            <p className="font-bold uppercase tracking-widest text-stone-400">Proof Status</p>
+            <p className="font-bold uppercase tracking-widest text-stone-400">{t("orders.status")}</p>
             <p className={`mt-1 font-bold ${order.proofStatus === "approved" ? "text-emerald-600" : order.proofStatus === "rejected" ? "text-red-600" : "text-amber-600"}`}>
-              {order.proofStatus === "none" ? "Not submitted" : order.proofStatus}
+              {t(`proofStatus.${order.proofStatus}`)}
             </p>
           </div>
         </div>
